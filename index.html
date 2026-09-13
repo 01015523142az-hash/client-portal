@@ -1382,6 +1382,22 @@
   }
   :root[data-theme="light"] .chat-panel .chat-panel-header{ background:transparent; }
 
+
+  /* ---- v633: Aura-One mascot ----
+     The blink is TWO groups swapped by opacity rather than one group
+     redrawn: the reference switches between a smiling face and two flat
+     slits, and cross-fading them on a shared keyframe is what makes it
+     read as an eyelid instead of a fade. 6s cycle, shut for ~2% of it. */
+  .aura-face{ animation:auraBlinkOff 6s infinite; }
+  .aura-blink{ animation:auraBlinkOn 6s infinite; opacity:0; }
+  @keyframes auraBlinkOff{ 0%,95%,100%{ opacity:1 } 96.5%,98.5%{ opacity:0 } }
+  @keyframes auraBlinkOn{  0%,95%,100%{ opacity:0 } 96.5%,98.5%{ opacity:1 } }
+  .aura-beacon{ animation:auraBeacon 2s ease-in-out infinite; }
+  @keyframes auraBeacon{ 0%,100%{ opacity:.6 } 50%{ opacity:1 } }
+  @media (prefers-reduced-motion:reduce){
+    .aura-face, .aura-blink, .aura-beacon{ animation:none; }
+    .aura-blink{ opacity:0; }
+  }
 </style>
 
 </head>
@@ -2295,6 +2311,11 @@
   <button id="chatFabBtn" class="chat-fab" title="Ask Remi" data-comment-anchor="9a622bb5e3-button">
     <svg class="mascot-svg" viewBox="0 0 140 175" xmlns="http://www.w3.org/2000/svg">
       <defs>
+        <linearGradient id="auraGold" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F3E3C3"/><stop offset="50%" stop-color="#E2B774"/><stop offset="100%" stop-color="#C59B4E"/></linearGradient>
+        <linearGradient id="auraSlate" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#2A384F"/><stop offset="100%" stop-color="#1E293B"/></linearGradient>
+        <linearGradient id="auraVisor" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0B111D"/><stop offset="100%" stop-color="#0F172A"/></linearGradient>
+        <filter id="auraGlow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        
         <filter id="mascotShadow" x="-50%" y="-50%" width="200%" height="200%">
           <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.35"></feDropShadow>
         </filter>
@@ -2314,17 +2335,33 @@
       </defs>
       <ellipse cx="70" cy="168" rx="26" ry="5" fill="#000000" opacity="0.25" class="mascot-shadow"></ellipse>
       <g class="mascot-body-group" filter="url(#mascotShadow)">
-        <line x1="70" y1="14" x2="70" y2="4" stroke="var(--gold)" stroke-width="3" stroke-linecap="round"></line>
-        <circle class="mascot-antenna-tip" cx="70" cy="4" r="4.5" fill="var(--gold)"></circle>
-        <rect x="38" y="14" width="64" height="48" rx="22" fill="url(#mascotMetal)" stroke="var(--gold)" stroke-width="2.5"></rect>
-        <rect x="47" y="27" width="46" height="26" rx="13" fill="url(#mascotMetalLight)"></rect>
-        <ellipse cx="58" cy="21" rx="14" ry="5" fill="#FFFFFF" opacity="0.1"></ellipse>
-        <path d="M42 32a18 24 0 000 16" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="3" fill="none" stroke-linecap="round"></path>
-        <g class="mascot-eyes">
-          <circle cx="60" cy="40" r="5.5" fill="var(--focus)"></circle>
-          <circle cx="80" cy="40" r="5.5" fill="var(--focus)"></circle>
-          <circle cx="58.2" cy="38.2" r="1.5" fill="#FFFFFF" opacity="0.85"></circle>
-          <circle cx="78.2" cy="38.2" r="1.5" fill="#FFFFFF" opacity="0.85"></circle>
+        <!-- v633: Aura-One head, ported from the mascot design reference
+             (VisorExpressionSimulator.tsx, viewBox 260). Scaled 1/3 and
+             translated so the antenna tip lands where the old head's did --
+             see the v633 note in the generator for the arithmetic. -->
+        <g class="aura-head" transform="translate(26.667,0) scale(0.333333)">
+          <rect x="127" y="18" width="6" height="28" rx="3" fill="url(#auraGold)"/>
+          <circle cx="130" cy="16" r="7" fill="url(#auraGold)"/>
+          <circle class="aura-beacon" cx="130" cy="16" r="4" fill="#38BDF8" filter="url(#auraGlow)"/>
+          <rect x="22" y="106" width="16" height="48" rx="8" fill="url(#auraGold)"/>
+          <rect x="222" y="106" width="16" height="48" rx="8" fill="url(#auraGold)"/>
+          <circle cx="30" cy="130" r="3.5" fill="#1E293B"/>
+          <circle cx="230" cy="130" r="3.5" fill="#1E293B"/>
+          <rect x="34" y="42" width="192" height="176" rx="68" fill="url(#auraSlate)" stroke="#334155" stroke-width="2.5"/>
+          <path d="M 72 70 Q 130 63 188 70" fill="none" stroke="url(#auraGold)" stroke-width="3.5" stroke-linecap="round"/>
+          <rect x="48" y="78" width="164" height="104" rx="42" fill="url(#auraVisor)" stroke="#1E293B" stroke-width="2"/>
+          <path d="M 64 88 Q 130 84 196 92" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.15" stroke-linecap="round"/>
+          <g class="aura-face" filter="url(#auraGlow)">
+            <path d="M 80 132 Q 98 110 116 132" fill="none" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <path d="M 144 132 Q 162 110 180 132" fill="none" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <path d="M 120 148 Q 130 156 140 148" fill="none" stroke="#38BDF8" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="74" cy="144" r="4.5" fill="#E2B774" opacity="0.8"/>
+            <circle cx="186" cy="144" r="4.5" fill="#E2B774" opacity="0.8"/>
+          </g>
+          <g class="aura-blink" filter="url(#auraGlow)">
+            <line x1="82" y1="130" x2="114" y2="130" stroke="#38BDF8" stroke-width="4" stroke-linecap="round"/>
+            <line x1="146" y1="130" x2="178" y2="130" stroke="#38BDF8" stroke-width="4" stroke-linecap="round"/>
+          </g>
         </g>
         <rect x="63" y="60" width="14" height="8" fill="#0C0F14"></rect>
         <rect x="63" y="60" width="14" height="3" fill="#FFFFFF" opacity="0.06"></rect>
