@@ -8167,33 +8167,41 @@ async function requestHumanClientChat() {
 
 // ---------- notification sound + desktop notification (parity with the
 // staff dashboard's own chat widget, v64/v90) ----------
-// Same MSN-Messenger-style synthesized two-note blip as the staff side —
-// generated live with Web Audio oscillators, no audio files bundled or
-// reproduced from any app. One shared AudioContext, created lazily on
-// first use since browsers won't let one run before a user gesture —
-// logging in already counts as one.
+// v637: the same two-note GLIDE chime the staff side plays, kept in step
+// with it deliberately -- this comment used to claim parity while the two
+// had diverged (staff moved to the glide in v628, this stayed on the old
+// MSN blip). Generated live with Web Audio oscillators, no audio files
+// bundled or reproduced from any app. One shared AudioContext, created
+// lazily on first use since browsers won't let one run before a user
+// gesture — logging in already counts as one.
 let clientChatAudioCtx = null;
 function clientChatPlayNotificationSound() {
   try {
     if (!clientChatAudioCtx) clientChatAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (clientChatAudioCtx.state === "suspended") clientChatAudioCtx.resume();
-    const notes = [
-      { freq: 932.33, type: "square", at: 0, dur: 0.09, vol: 0.11 }, // A#5 tick
-      { freq: 1244.51, type: "triangle", at: 0.11, dur: 0.24, vol: 0.17 }, // D#6 landing note
-    ];
-    notes.forEach((n) => {
-      const start = clientChatAudioCtx.currentTime + n.at;
+    // v637: the design reference's chime, identical to the staff portal's
+    // (v628). Two SINE notes that GLIDE upward rather than two fixed
+    // pitches: 880 -> 1318.5Hz over 80ms, then 1760 -> 1975.5Hz from +100ms.
+    // The glide is the character; the square-wave MSN blip this replaces
+    // (A#5 tick + D#6 landing note) is what the staff side already moved
+    // off, and the comment above this function still claimed "parity with
+    // the staff dashboard" while the two had quietly diverged.
+    const now = clientChatAudioCtx.currentTime;
+    const glide = (fromHz, toHz, startAt, glideEnd, peak, decayEnd) => {
       const osc = clientChatAudioCtx.createOscillator();
       const gain = clientChatAudioCtx.createGain();
-      osc.type = n.type;
-      osc.frequency.value = n.freq;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(n.vol, start + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + n.dur);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(fromHz, now + startAt);
+      osc.frequency.exponentialRampToValueAtTime(toHz, now + glideEnd);
+      gain.gain.setValueAtTime(0, now + startAt);
+      gain.gain.linearRampToValueAtTime(peak, now + startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + decayEnd);
       osc.connect(gain).connect(clientChatAudioCtx.destination);
-      osc.start(start);
-      osc.stop(start + n.dur + 0.02);
-    });
+      osc.start(now + startAt);
+      osc.stop(now + decayEnd + 0.01);
+    };
+    glide(880, 1318.5, 0, 0.08, 0.20, 0.25);
+    glide(1760, 1975.5, 0.1, 0.18, 0.25, 0.45);
   } catch (e) { console.error("Chat notification sound failed", e); }
 }
 
