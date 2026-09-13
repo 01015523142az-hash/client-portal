@@ -8064,8 +8064,15 @@ async function sendClientChatMessage() {
       .select()
       .single();
     if (error) {
+      // v636: was console-only. This portal already alerts when an
+      // ATTACHMENT fails to upload, but stayed silent when the message
+      // itself failed to insert -- the more important of the two, because a
+      // client walks away believing they have told us something. The text is
+      // still handed back, which was the right half of the old behaviour.
       console.error("Failed to send chat message", error);
       input.value = body;
+      alert("Your message wasn't sent — please try again." +
+        (error.message ? String.fromCharCode(10) + String.fromCharCode(10) + error.message : ""));
       return;
     }
     clientChatMessages.push(data);
