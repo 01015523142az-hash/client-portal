@@ -1472,12 +1472,24 @@
   /* The switch is the reference's, including its green ON state -- green
      here is a control affordance, not the brand accent, and the reference
      uses it for exactly that. */
+  /* v645: THE OFF/ON STATES WERE PIXEL-IDENTICAL IN THE CLIENT PORTAL.
+     This block is shared between both portals, but --idle and --good are
+     only defined in the staff portal -- the client portal defines neither,
+     so both declarations resolved to nothing and the track computed to
+     rgba(0,0,0,0) in BOTH states. On a dark panel that reads as a black
+     bar you cannot tell the state of. Measured, not guessed.
+
+     Fixed with fallbacks so the staff portal keeps its own palette, plus a
+     border on the off state: even if a future theme makes the track colour
+     close to the panel colour, the outline still shows there is a track
+     there and which side the knob sits on. */
   .nc-switch{
-    width:38px; height:21px; border-radius:999px; border:none; padding:0; margin:0;
-    background:var(--idle); position:relative; cursor:pointer;
-    transition:background .16s ease;
+    width:38px; height:21px; border-radius:999px; padding:0; margin:0;
+    background:var(--idle, #39414E); position:relative; cursor:pointer;
+    border:1px solid rgba(128,138,153,.45);
+    transition:background .16s ease, border-color .16s ease;
   }
-  .nc-switch[aria-checked="true"]{ background:var(--good); }
+  .nc-switch[aria-checked="true"]{ background:var(--good, #22C55E); border-color:transparent; }
   .nc-knob{
     position:absolute; top:2.5px; left:2.5px; width:16px; height:16px;
     border-radius:50%; background:#fff; transition:transform .16s ease;
@@ -8541,10 +8553,17 @@ function ncRenderList(){
   ncPositionPanel();
 }
 
-// Opening an item marks it read and shows the reference's detail card. It
-// does NOT immediately run the item's onClick -- the reference puts a detail
-// view between the list and wherever the notification points, and jumping
-// straight there would make that view unreachable.
+// v645: CLICKING A NOTIFICATION NOW GOES WHERE THE WORK IS. v642 put the
+// detail card between the list and the notification's destination, so
+// acting on something took two clicks and the second one was not obviously
+// there. Every notification that points somewhere already carried an
+// onClick that activates the right tab and section -- that routing existed
+// and was simply being gate-kept.
+//
+// The detail card is NOT gone: it is what an item with nowhere to go opens
+// instead (the appointment and new-email notifications deliberately have no
+// onClick, see v623), so the click always does the most useful thing
+// available rather than sometimes doing nothing.
 function ncOpenDetail(id){
   var n = (NC_ADAPTER.items() || []).find(function(x){ return String(x.id) === String(id); });
   if(!n) return;
@@ -8552,9 +8571,20 @@ function ncOpenDetail(id){
     n.readAt = Date.now();
     if(NC_ADAPTER.onRead) NC_ADAPTER.onRead(n);
   }
+  if(NC_ADAPTER.refreshBadge) NC_ADAPTER.refreshBadge();
+
+  if(typeof n.onClick === 'function'){
+    var panel = document.getElementById('notifCenterPanel');
+    if(panel) panel.style.display = 'none';
+    ncDetailId = null;
+    if(NC_ADAPTER.onClose) NC_ADAPTER.onClose();
+    try{ n.onClick(); }
+    catch(e){ console.error('notification onClick failed', e); }
+    return;
+  }
+
   ncDetailId = id;
   ncRenderDetail();
-  if(NC_ADAPTER.refreshBadge) NC_ADAPTER.refreshBadge();
 }
 
 function ncRenderDetail(){
