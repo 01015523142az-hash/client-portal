@@ -1513,6 +1513,100 @@
     max-height:calc(100vh - var(--chat-panel-bottom) - var(--chat-panel-gap-top));
   }
 
+  /* ---- v703: Remi home screen and past conversations ----
+     Remi used to open straight into one endless transcript -- rendered while
+     the panel was hidden, so it sat scrolled to its TOP. It now opens on a
+     home screen shaped like the owner's Pylon reference: a welcome, a "Start
+     new chat" card (or "Continue your conversation") and the latest past
+     conversations, each with its title, who handled it, the date and its
+     number. The screen is a class on #chatPanel; these rules override the
+     existing show/hide code (banner, attachment preview, header buttons) per
+     screen, so none of that code had to learn about screens. */
+  .chat-panel .chat-home{
+    display:none; flex:1; min-height:0; overflow-y:auto; flex-direction:column; gap:14px;
+    padding:18px 16px 20px;
+  }
+  .chat-panel.view-home #chatHome, .chat-panel.view-all #chatAllConvs{ display:flex; }
+  .chat-panel.view-home #chatMessages, .chat-panel.view-all #chatMessages,
+  .chat-panel.view-home #chatRoutedBanner, .chat-panel.view-all #chatRoutedBanner, .chat-panel.view-past #chatRoutedBanner,
+  .chat-panel.view-home .chat-input-row, .chat-panel.view-all .chat-input-row, .chat-panel.view-past .chat-input-row,
+  .chat-panel.view-home .chat-attach-preview, .chat-panel.view-all .chat-attach-preview, .chat-panel.view-past .chat-attach-preview,
+  .chat-panel.view-home #chatTalkHumanBtn, .chat-panel.view-all #chatTalkHumanBtn, .chat-panel.view-past #chatTalkHumanBtn,
+  .chat-panel.view-home #chatCallBtn, .chat-panel.view-all #chatCallBtn, .chat-panel.view-past #chatCallBtn{ display:none !important; }
+  .chat-panel .chat-back-btn{
+    display:none; align-items:center; justify-content:center; flex-shrink:0;
+    width:28px; height:28px; padding:0; margin:0 2px 0 -6px; border-radius:8px;
+  }
+  .chat-panel:not(.view-home) .chat-back-btn{ display:inline-flex; }
+  .chat-panel .chat-back-btn:hover{ background:var(--inset); }
+  .chat-ended-bar{ display:none; }
+  .chat-panel.view-past .chat-ended-bar{
+    display:flex; flex-direction:column; align-items:center; gap:8px; flex-shrink:0;
+    padding:12px 14px 14px; border-top:1px solid var(--border);
+    font-size:12px; color:var(--text-2); text-align:center;
+  }
+  .chat-ended-btn{
+    width:auto; margin:0; padding:8px 18px; border:none; border-radius:999px;
+    font-size:12.5px; font-weight:700; color:#1A1206;
+    background:linear-gradient(to top right, var(--chat-accent-1), var(--chat-accent-2));
+  }
+  .chat-ended-btn:hover{ filter:brightness(1.06); }
+
+  .chat-home-hero{ padding:4px 2px 0; }
+  .chat-home-hi{ font-size:24px; font-weight:800; line-height:1.15; letter-spacing:-0.02em; color:var(--text); }
+  .chat-home-sub{ margin-top:6px; font-size:13px; line-height:1.5; color:var(--text-2); }
+  .chat-home-card{
+    width:100%; margin:0; display:flex; align-items:center; gap:12px; text-align:left;
+    padding:14px; border-radius:14px; border:1px solid var(--border-light);
+    background:var(--inset); color:var(--text);
+    transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  .chat-home-card:hover{ background:var(--card-hover); border-color:var(--chat-accent-2); box-shadow:0 0 0 3px rgba(201,166,107,.14); }
+  .chat-home-card-icon{
+    flex-shrink:0; width:38px; height:38px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center; color:#1A1206;
+    background:linear-gradient(to top right, var(--chat-accent-1), var(--chat-accent-2));
+  }
+  .chat-home-card-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .chat-home-card-title{ font-size:14px; font-weight:700; color:var(--text); }
+  .chat-home-card-sub{ font-size:12px; color:var(--text-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-home-card-go{ flex-shrink:0; display:flex; color:var(--chat-accent-2); }
+  .chat-home-unread{
+    flex-shrink:0; min-width:20px; height:20px; padding:0 6px; border-radius:10px;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--chat-badge); color:#fff; font-size:11px; font-weight:700;
+  }
+  .chat-home-link{
+    width:auto; margin:0; padding:0; border:none; background:none; align-self:flex-start;
+    color:var(--chat-accent-2); font-size:12px; font-weight:600;
+  }
+  .chat-home-link:hover{ text-decoration:underline; }
+  .chat-home-error{ font-size:12px; color:var(--danger); }
+  .chat-home-section{ display:flex; flex-direction:column; gap:8px; margin-top:4px; }
+  .chat-home-section-head{ display:flex; align-items:center; justify-content:space-between; padding:0 2px; }
+  .chat-home-section-head .chat-home-link{ align-self:auto; }
+  .chat-home-section-title{ font-size:13px; font-weight:700; color:var(--text); }
+  .chat-conv-list{
+    display:flex; flex-direction:column; overflow:hidden;
+    border:1px solid var(--border-light); border-radius:14px; background:var(--inset);
+  }
+  .chat-conv-row{
+    width:100%; margin:0; display:flex; align-items:center; gap:10px; text-align:left;
+    padding:11px 14px; border:none; border-top:1px solid var(--border); border-radius:0;
+    background:transparent; color:var(--text);
+  }
+  .chat-conv-row:first-child{ border-top:none; }
+  .chat-conv-row:hover{ background:var(--card-hover); }
+  .chat-conv-row-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+  .chat-conv-row-title{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-conv-row-meta{ font-size:11.5px; color:var(--text-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-conv-row-go{ flex-shrink:0; display:flex; color:var(--text-2); }
+  .chat-home-empty{ font-size:12px; color:var(--text-2); padding:2px; }
+  /* The chat's gold is pale; on the light theme it needs the darker gold to
+     read as a link. */
+  :root[data-theme="light"] .chat-home-link,
+  :root[data-theme="light"] .chat-home-card-go{ color:#7A5C22; }
+
 
   /* =========================================================================
      v642: notification centre rebuilt to the supplied reference, and
@@ -2923,9 +3017,11 @@
     <span class="mascot-label">Ask Remi</span>
     <span id="chatUnreadBadge" class="chat-unread-badge" style="display:none;">0</span>
   </button>
-  <div id="chatPanel" class="chat-panel" style="display:none;" data-comment-anchor="da61a27ebc-div">
+  <div id="chatPanel" class="chat-panel view-home" style="display:none;" data-comment-anchor="da61a27ebc-div">
     <div class="chat-panel-header">
-      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="chatPanelTitle">Chat with Remi</span>
+      <!-- v703: back to Remi's home screen (Start new chat, Past conversations). -->
+      <button id="chatBackBtn" class="chat-icon-btn chat-back-btn" title="Back" aria-label="Back"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4.5L7 10l5.5 5.5"/></svg></button>
+      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="chatPanelTitle">PropTech AI Support</span>
       <!-- v378: replaces the old per-message "Want to talk to a specific
            team instead?" block that used to reappear under every Remi
            reply — a single, always-reachable, never-repeated escalation
@@ -2935,8 +3031,14 @@
       <span id="chatCallBtn" class="chat-icon-btn" title="Voice call" style="display:none;">📞</span>
       <button id="chatCloseBtn" class="chat-icon-btn" title="Close">×</button>
     </div>
+    <!-- v703: Remi's home screen and the full list of past conversations.
+         Which of home / all / conv / past shows is a class on #chatPanel
+         (view-*), set by setClientChatView(). -->
+    <div id="chatHome" class="chat-home"></div>
+    <div id="chatAllConvs" class="chat-home chat-all-convs"></div>
     <div id="chatRoutedBanner" class="chat-routed-banner" style="display:none;"></div>
     <div id="chatMessages" class="chat-messages"></div>
+    <div id="chatEndedBar" class="chat-ended-bar"></div>
     <div id="chatAttachPreview" class="chat-attach-preview">
       <img id="chatAttachPreviewImg" style="display:none;" alt="">
       <span class="chat-attach-preview-name" id="chatAttachPreviewName"></span>
@@ -8035,6 +8137,14 @@ let clientChatRealtimeChannel = null;
 let clientChatChannelEverConnected = false; // v394: distinguishes the initial connect from a reconnect-after-drop — see subscribeClientChatRealtime()'s 'SUBSCRIBED' callback
 let clientChatUnread = 0;
 let clientChatPanelOpen = false;
+// v703: Remi's home screen and numbered conversations.
+let clientChatConvs = [];            // this client's conversations, newest first
+let clientChatCurrentConvId = null;  // the open one, if any
+let clientChatView = "home";         // home | all | conv | past
+let clientChatPastConv = null;       // the finished conversation being read
+let clientChatPastMessages = [];
+let clientChatPastReturnView = "home";
+let clientChatHomeError = "";
 
 // v102: chat teaser pop-up (the "Support team / Need assistance, Happy to
 // help!" bubble) — shown once per browser session a few seconds after the
@@ -8069,13 +8179,11 @@ async function initClientChatWidget() {
     document.getElementById("chatPanel").style.display = clientChatPanelOpen ? "flex" : "none";
     if (clientChatPanelOpen) {
       clientChatEnsureNotificationPermission();
-      clientChatUnread = 0;
-      updateClientChatUnreadBadge();
-      // v314: opening the panel means every staff message currently in
-      // it is now actually seen — covers messages that arrived while it
-      // was closed (delivered_at already set by the realtime handler,
-      // this now also sets read_at).
-      sb.rpc("mark_client_chat_read", { p_client_id: currentClient.id }).then(({ error }) => { if (error) console.error("mark_client_chat_read failed", error); });
+      // v703: Remi opens on its home screen -- or straight into the
+      // conversation when a reply is waiting. Entering the conversation is
+      // now what clears the unread count and marks messages read (v314's
+      // mark_client_chat_read, which used to run here on every open).
+      setClientChatView(clientChatUnread > 0 && clientChatCurrentConvId ? "conv" : "home");
     }
   });
   document.getElementById("chatTeaser").addEventListener("click", () => {
@@ -8089,6 +8197,13 @@ async function initClientChatWidget() {
   document.getElementById("chatCloseBtn").addEventListener("click", () => {
     clientChatPanelOpen = false;
     document.getElementById("chatPanel").style.display = "none";
+  });
+  // v703: the home screen, the full list, the finished-conversation bar, Back.
+  document.getElementById("chatHome").addEventListener("click", onClientChatHomeClick);
+  document.getElementById("chatAllConvs").addEventListener("click", onClientChatHomeClick);
+  document.getElementById("chatEndedBar").addEventListener("click", onClientChatHomeClick);
+  document.getElementById("chatBackBtn").addEventListener("click", () => {
+    setClientChatView(clientChatView === "past" ? clientChatPastReturnView : "home");
   });
   document.getElementById("chatSendBtn").addEventListener("click", sendClientChatMessage);
   document.getElementById("chatInput").addEventListener("keydown", (e) => {
@@ -8214,14 +8329,22 @@ async function loadClientChatThread() {
                        agent_name: agent && agent.name, agent_title: agent && agent.title };
 }
 
+// v703: only the OPEN conversation. This was every message the client had
+// ever exchanged, oldest first and capped at 200 -- so a long history showed
+// its first 200 messages and never its latest. Past conversations load on
+// demand (openClientChatPastConversation).
 async function loadClientChatMessages() {
-  const { data } = await sb
+  await loadClientChatConversations();
+  if (!clientChatCurrentConvId) { clientChatMessages = []; return; }
+  const { data, error } = await sb
     .from("client_chat_messages")
-    .select("id, sender, body, created_at, edited_at, delivered_at, read_at, attachment_path, attachment_name, attachment_mime")
+    .select("id, conversation_id, sender, body, created_at, edited_at, delivered_at, read_at, attachment_path, attachment_name, attachment_mime")
     .eq("client_id", currentClient.id)
-    .order("created_at", { ascending: true })
-    .limit(200);
-  clientChatMessages = data || [];
+    .eq("conversation_id", clientChatCurrentConvId)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) { console.error("Failed to load chat messages", error); return; }
+  clientChatMessages = (data || []).reverse();
 }
 
 function renderClientChatPanel() {
@@ -8261,6 +8384,245 @@ function renderClientChatPanel() {
   }
 
   renderClientChatMessages();
+  // v703
+  renderClientChatHeader();
+  renderClientChatHome();
+  renderClientChatAllConvs();
+  renderClientChatEndedBar();
+}
+
+// ---------------------------------------------------------------------------
+// v703: Remi's home screen and numbered conversations -- the owner's
+// Pylon-style reference: a welcome, a "Start new chat" card (or "Continue"
+// while a conversation is open) and the latest past conversations, each with
+// its title, who handled it, the date and its number. Conversations are
+// client_chat_conversations rows (#1001, ...), assigned by a database trigger
+// as messages are inserted, so nothing that SENDS a message had to change.
+// A conversation ends when staff end the chat, when the client starts a new
+// one, or after a day idle with only Remi in it. Which screen shows is a
+// class on #chatPanel (view-home / view-all / view-conv / view-past).
+const CLIENT_CHAT_ICON_BUBBLE = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3.5 5.5a2 2 0 012-2h9a2 2 0 012 2v6a2 2 0 01-2 2H9l-3.5 3v-3a2 2 0 01-2-2z"/></svg>';
+const CLIENT_CHAT_ICON_SEND = '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3L9 11"/><path d="M17 3l-5 14-3-6-6-3z"/></svg>';
+const CLIENT_CHAT_ICON_CHEVRON = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 4.5L13 10l-5.5 5.5"/></svg>';
+
+async function loadClientChatConversations() {
+  const { data, error } = await sb
+    .from("client_chat_conversations")
+    .select("id, number, started_at, ended_at, ended_reason, title, staff_name, last_message_at, message_count")
+    .eq("client_id", currentClient.id)
+    .order("started_at", { ascending: false })
+    .limit(200);
+  if (error) { console.error("Failed to load chat conversations", error); return; }
+  clientChatConvs = data || [];
+  const open = clientChatConvs.find((c) => !c.ended_at);
+  clientChatCurrentConvId = open ? open.id : null;
+}
+
+function setClientChatView(view) {
+  clientChatView = view;
+  const panel = document.getElementById("chatPanel");
+  panel.classList.remove("view-home", "view-all", "view-conv", "view-past");
+  panel.classList.add("view-" + view);
+  if (view === "home" || view === "all") {
+    // Cheap, and keeps "Past conversations" current (a chat staff just ended).
+    loadClientChatConversations().then(() => { renderClientChatHome(); renderClientChatAllConvs(); });
+  }
+  if (view === "conv") {
+    clientChatUnread = 0;
+    updateClientChatUnreadBadge();
+    // v314: seeing the conversation is what makes staff messages "read".
+    if (clientChatPanelOpen) {
+      sb.rpc("mark_client_chat_read", { p_client_id: currentClient.id }).then(({ error }) => { if (error) console.error("mark_client_chat_read failed", error); });
+    }
+  }
+  renderClientChatPanel();
+  if (view === "conv" || view === "past") {
+    // THE "IT OPENS SCROLLED UP" FIX: a transcript rendered while the panel
+    // was hidden cannot be scrolled, so it sat at its top. Pin it now that
+    // it is on screen, and again once images have sized themselves.
+    const box = document.getElementById("chatMessages");
+    chatPinToBottom(box);
+    requestAnimationFrame(() => chatKeepPinned(box, true));
+  }
+}
+
+// Straight into the current conversation -- for a notification click.
+function openClientChatConversation() {
+  if (!clientChatPanelOpen) {
+    dismissChatTeaser();
+    clientChatPanelOpen = true;
+    document.getElementById("chatPanel").style.display = "flex";
+  }
+  setClientChatView("conv");
+}
+
+function renderClientChatHeader() {
+  const el = document.getElementById("chatPanelTitle");
+  if (!el) return;
+  const t = clientChatThread || {};
+  let title;
+  if (clientChatView === "home") title = "PropTech AI Support";
+  else if (clientChatView === "all") title = "Past conversations";
+  else if (clientChatView === "past") title = clientChatPastConv ? "Conversation #" + clientChatPastConv.number : "Conversation";
+  else if (t.status === "routed") title = t.agent_name ? "Chat with " + t.agent_name : "Chat with our team";
+  else title = "Chat with Remi";
+  el.textContent = title;
+}
+
+function clientChatFmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "Today";
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], d.getFullYear() === now.getFullYear()
+    ? { month: "short", day: "numeric" }
+    : { month: "short", day: "numeric", year: "numeric" });
+}
+
+function clientChatConvTitle(c) {
+  return c.title || (c.staff_name ? "Conversation with " + c.staff_name : "Conversation with Remi");
+}
+
+function clientChatConvRowHtml(c) {
+  const meta = [c.staff_name || "Remi", clientChatFmtDate(c.last_message_at || c.started_at), "#" + c.number].join(" \u2022 ");
+  return '<button type="button" class="chat-conv-row" data-conv-id="' + escapeHtml(c.id) + '">'
+    + '<span class="chat-conv-row-main">'
+    + '<span class="chat-conv-row-title">' + escapeHtml(clientChatConvTitle(c)) + '</span>'
+    + '<span class="chat-conv-row-meta">' + escapeHtml(meta) + '</span>'
+    + '</span><span class="chat-conv-row-go">' + CLIENT_CHAT_ICON_CHEVRON + '</span></button>';
+}
+
+function clientChatHomeCardHtml(action, title, lines, badge, goIcon) {
+  return '<button type="button" class="chat-home-card" data-chat-action="' + action + '">'
+    + '<span class="chat-home-card-icon">' + CLIENT_CHAT_ICON_BUBBLE + '</span>'
+    + '<span class="chat-home-card-main"><span class="chat-home-card-title">' + escapeHtml(title) + '</span>'
+    + lines.filter(Boolean).map((l) => '<span class="chat-home-card-sub">' + escapeHtml(l) + '</span>').join("")
+    + '</span>'
+    + (badge ? '<span class="chat-home-unread">' + (badge > 99 ? "99+" : String(badge)) + '</span>' : "")
+    + '<span class="chat-home-card-go">' + goIcon + '</span></button>';
+}
+
+function renderClientChatHome() {
+  const home = document.getElementById("chatHome");
+  if (!home || !currentClient) return;
+  const first = String(currentClient.full_name || "").trim().split(/\s+/)[0] || "";
+  const t = clientChatThread || {};
+  const routed = t.status === "routed";
+  const open = clientChatConvs.find((c) => !c.ended_at) || null;
+  const past = clientChatConvs.filter((c) => c.ended_at);
+
+  let html = '<div class="chat-home-hero">'
+    + '<div class="chat-home-hi">' + (first ? "Welcome, " + escapeHtml(first) : "Welcome") + ' 👋</div>'
+    + '<div class="chat-home-sub">I\'m Remi, your PropTech AI assistant. Ask me about your campaigns, leads or billing, and I\'ll bring in our team whenever you want a person.</div>'
+    + '</div>';
+
+  if (open && (clientChatMessages.length || routed)) {
+    const who = routed
+      ? (t.agent_name || (t.assigned_staff_name ? "our " + t.assigned_staff_name + " team" : "our team"))
+      : "Remi";
+    const last = clientChatMessages[clientChatMessages.length - 1];
+    const preview = last
+      ? (last.sender === "client" ? "You: " : "") + (last.body || (last.attachment_name ? "Sent a file: " + last.attachment_name : "Sent a file"))
+      : "";
+    html += clientChatHomeCardHtml("continue", "Continue your conversation", ["With " + who + " \u00b7 #" + open.number, preview], clientChatUnread, CLIENT_CHAT_ICON_CHEVRON);
+    // While a team has the conversation the client carries on in it, so
+    // staff never lose the thread mid-help (client_chat_start_new refuses).
+    if (!routed) html += '<button type="button" class="chat-home-link" data-chat-action="new">Start a new chat instead</button>';
+  } else {
+    html += clientChatHomeCardHtml("new", "Start new chat", ["Powered by AI"], 0, CLIENT_CHAT_ICON_SEND);
+  }
+  if (clientChatHomeError) html += '<div class="chat-home-error">' + escapeHtml(clientChatHomeError) + '</div>';
+
+  html += '<div class="chat-home-section"><div class="chat-home-section-head"><span class="chat-home-section-title">Past conversations</span>'
+    + (past.length > 3 ? '<button type="button" class="chat-home-link" data-chat-action="all">See all</button>' : "")
+    + '</div>'
+    + (past.length
+        ? '<div class="chat-conv-list">' + past.slice(0, 3).map(clientChatConvRowHtml).join("") + '</div>'
+        : '<div class="chat-home-empty">Finished conversations will appear here.</div>')
+    + '</div>';
+  home.innerHTML = html;
+}
+
+function renderClientChatAllConvs() {
+  const box = document.getElementById("chatAllConvs");
+  if (!box) return;
+  const past = clientChatConvs.filter((c) => c.ended_at);
+  box.innerHTML = past.length
+    ? '<div class="chat-conv-list">' + past.map(clientChatConvRowHtml).join("") + '</div>'
+    : '<div class="chat-home-empty">No past conversations yet.</div>';
+}
+
+function renderClientChatEndedBar() {
+  const bar = document.getElementById("chatEndedBar");
+  if (!bar) return;
+  if (clientChatView !== "past") { bar.innerHTML = ""; return; }
+  const c = clientChatPastConv;
+  const when = c && c.ended_at ? clientChatFmtDate(c.ended_at) : "";
+  const hasOpen = Boolean(clientChatCurrentConvId);
+  bar.innerHTML = '<span>This conversation has ended' + (when ? " \u00b7 " + escapeHtml(when) : "") + '.</span>'
+    + '<button type="button" class="chat-ended-btn" data-chat-action="' + (hasOpen ? "continue" : "new") + '">'
+    + (hasOpen ? "Back to your current chat" : "Start new chat") + '</button>';
+}
+
+function onClientChatHomeClick(e) {
+  const row = e.target.closest("[data-conv-id]");
+  if (row) { openClientChatPastConversation(row.dataset.convId); return; }
+  const act = e.target.closest("[data-chat-action]");
+  if (!act) return;
+  const a = act.dataset.chatAction;
+  if (a === "continue") setClientChatView("conv");
+  else if (a === "new") startNewClientChat();
+  else if (a === "all") setClientChatView("all");
+}
+
+let clientChatStartingNew = false;
+async function startNewClientChat() {
+  if (clientChatStartingNew) return;
+  clientChatHomeError = "";
+  if (clientChatCurrentConvId) {
+    clientChatStartingNew = true;
+    try {
+      const { data, error } = await sb.rpc("client_chat_start_new");
+      if (error || !data || !data.ok) {
+        clientChatHomeError = (error && error.message) || (data && data.error) || "Couldn't start a new chat. Please try again.";
+        if (clientChatView !== "home") setClientChatView("home"); else renderClientChatHome();
+        return;
+      }
+      await loadClientChatConversations();
+    } finally {
+      clientChatStartingNew = false;
+    }
+  }
+  clientChatMessages = [];
+  setClientChatView("conv");
+}
+
+async function openClientChatPastConversation(id) {
+  const conv = clientChatConvs.find((c) => c.id === id);
+  if (!conv) return;
+  if (!conv.ended_at) { setClientChatView("conv"); return; }   // that is the open one
+  clientChatPastReturnView = clientChatView === "all" ? "all" : "home";
+  clientChatPastConv = conv;
+  clientChatPastMessages = [];
+  setClientChatView("past");
+  const box = document.getElementById("chatMessages");
+  box.innerHTML = '<div class="empty-state">Loading…</div>';
+  const { data, error } = await sb
+    .from("client_chat_messages")
+    .select("id, conversation_id, sender, body, created_at, edited_at, delivered_at, read_at, attachment_path, attachment_name, attachment_mime")
+    .eq("client_id", currentClient.id)
+    .eq("conversation_id", id)
+    .order("created_at", { ascending: true })
+    .limit(500);
+  if (clientChatPastConv !== conv || clientChatView !== "past") return;   // moved on meanwhile
+  if (error) { box.innerHTML = '<div class="empty-state">Couldn\'t load this conversation.</div>'; return; }
+  clientChatPastMessages = data || [];
+  renderClientChatMessages();
+  chatPinToBottom(box);
+  requestAnimationFrame(() => chatKeepPinned(box, true));
 }
 
 // v205: once a client's conversation is still just with the AI (never
@@ -8274,10 +8636,12 @@ function renderClientChatPanel() {
 // which is exactly the case this filter also naturally covers), the
 // full transcript shows normally again.
 const AI_CHAT_VISIBLE_MS = 24 * 60 * 60 * 1000;
+// v703: superseded by real conversations. A Remi-only conversation idle for a
+// day now ENDS (a database trigger) instead of being hidden, and the
+// transcript shown is only ever the open conversation or the finished one
+// being read. AI_CHAT_VISIBLE_MS above is no longer used.
 function visibleClientChatMessages() {
-  if (clientChatThread.status !== "ai") return clientChatMessages;
-  const cutoff = Date.now() - AI_CHAT_VISIBLE_MS;
-  return clientChatMessages.filter((m) => new Date(m.created_at).getTime() >= cutoff);
+  return clientChatView === "past" ? clientChatPastMessages : clientChatMessages;
 }
 
 // v210/v377/v378: the "Connect me to..." options went through three
@@ -8299,7 +8663,8 @@ function visibleClientChatMessages() {
 const CLIENT_CHAT_EDIT_WINDOW_MS = 15 * 60 * 1000;
 let clientChatEditingMessageId = null;
 function clientChatMessageEditable(m) {
-  return m.sender === "client" && (Date.now() - new Date(m.created_at).getTime()) < CLIENT_CHAT_EDIT_WINDOW_MS;
+  // v703: a finished conversation is read-only.
+  return clientChatView !== "past" && m.sender === "client" && (Date.now() - new Date(m.created_at).getTime()) < CLIENT_CHAT_EDIT_WINDOW_MS;
 }
 // v314: delivered_at/read_at are set purely from the STAFF side's own
 // actions (staff's browser receiving/viewing this thread) via the
@@ -8338,7 +8703,7 @@ function renderClientChatMessages() {
   // banner takes over.
   if (!visibleMessages.length) {
     box.innerHTML = '<div class="empty-state">👋 Hi, I\'m Remi! Ask me anything about your account or the portal.</div>'
-      + (clientPeerTypingUntil && clientPeerTypingUntil > Date.now() ? clientChatTypingBubbleHtml() : "");
+      + (clientChatView !== "past" && clientPeerTypingUntil && clientPeerTypingUntil > Date.now() ? clientChatTypingBubbleHtml() : "");
     if (wasAtBottom) chatPinToBottom(box); // v632
     Promise.resolve(resolveVisibleClientChatAttachments(box))
       .then(() => chatKeepPinned(box, wasAtBottom));
@@ -8356,9 +8721,12 @@ function renderClientChatMessages() {
         // from the three template slots that still interpolate it.
         const label = "";
         const role = m.sender === "ai" ? "ai" : m.sender === "staff" ? "staff" : "client";
+        // v703: the person's first name when we know it, not only the team.
         const senderName = m.sender === "ai"
           ? "Remi"
-          : (clientChatThread && clientChatThread.assigned_staff_name) || "PropTech AI";
+          : (clientChatView === "past"
+              ? (clientChatPastConv && clientChatPastConv.staff_name) || "PropTech AI"
+              : (clientChatThread && (clientChatThread.agent_name || clientChatThread.assigned_staff_name)) || "PropTech AI");
         const atMs = new Date(m.created_at).getTime();
         const isSeq = chatIsSequential(prevSender, m.sender, atMs);
         prevSender = { key: m.sender, at: atMs };
@@ -8397,7 +8765,7 @@ function renderClientChatMessages() {
             <div class="chat-msg-meta">${label}${time}${editedLabel}${editBtnHtml}${ticksHtml ? " " + ticksHtml : ""}</div>
           </div>`;
       })
-      .join("") + (clientPeerTypingUntil && clientPeerTypingUntil > Date.now() ? clientChatTypingBubbleHtml() : "");
+      .join("") + (clientChatView !== "past" && clientPeerTypingUntil && clientPeerTypingUntil > Date.now() ? clientChatTypingBubbleHtml() : "");
   if (wasAtBottom) chatPinToBottom(box); // v632
   Promise.resolve(resolveVisibleClientChatAttachments(box))
     .then(() => chatKeepPinned(box, wasAtBottom));
@@ -8666,7 +9034,15 @@ async function sendClientChatMessage() {
         (error.message ? String.fromCharCode(10) + String.fromCharCode(10) + error.message : ""));
       return;
     }
-    clientChatMessages.push(data);
+    // v703: the first message of a new conversation (after "Start new chat",
+    // or once the last one ended) comes back carrying the new conversation's
+    // id -- adopt it and start the transcript from this message.
+    if (data.conversation_id && data.conversation_id !== clientChatCurrentConvId) {
+      clientChatCurrentConvId = data.conversation_id;
+      clientChatMessages = [];
+      loadClientChatConversations().then(() => { renderClientChatHome(); renderClientChatHeader(); });
+    }
+    if (!clientChatMessages.some((x) => x.id === data.id)) clientChatMessages.push(data);   // realtime may have delivered it first
     renderClientChatMessages();
 
     // Fire-and-forget, same division of labor as the staff dashboard's own
@@ -8843,7 +9219,7 @@ function clientChatShowDesktopNotification(m) {
   } catch (e) { return; }
   n.onclick = () => {
     window.focus();
-    if (!clientChatPanelOpen) document.getElementById("chatFabBtn").click();
+    openClientChatConversation();   // v703: into the conversation, not the home screen
     n.close();
   };
 }
@@ -8851,7 +9227,7 @@ function clientChatShowDesktopNotification(m) {
 // desktop notification) as opposed to just quietly bumping the unread
 // badge: skip if the chat panel is already open and the tab is focused.
 function clientChatMaybeNotify(m) {
-  const activelyViewing = clientChatPanelOpen && document.hasFocus();
+  const activelyViewing = clientChatPanelOpen && clientChatView === "conv" && document.hasFocus();   // v703: the home screen is not the conversation
   if (activelyViewing) return;
   clientChatPlayNotificationSound();
   clientChatShowDesktopNotification(m);
@@ -9218,29 +9594,40 @@ function subscribeClientChatRealtime() {
       (payload) => {
         const m = payload.new;
         if (clientChatMessages.some((x) => x.id === m.id)) return; // de-dupe against our own optimistic insert
+        // v703: a message from a conversation this tab is not showing means a
+        // new one began (after staff ended the chat, a "Start new chat", or a
+        // day idle with Remi). Start the transcript over and refresh the list.
+        if (m.conversation_id && m.conversation_id !== clientChatCurrentConvId) {
+          clientChatCurrentConvId = m.conversation_id;
+          clientChatMessages = [];
+          loadClientChatConversations().then(() => { renderClientChatHome(); renderClientChatHeader(); });
+        }
         clientChatMessages.push(m);
         // v314: a staff message reaching this already-connected browser
-        // counts as "delivered" — fire-and-forget. If the panel's open,
-        // it's also "read" straight away.
+        // counts as "delivered" — fire-and-forget. If the conversation is
+        // on screen, it's also "read" straight away. (v703: the home screen
+        // being open does not count.)
+        const viewingConv = clientChatPanelOpen && clientChatView === "conv";
         if (m.sender === "staff") {
-          const rpcName = clientChatPanelOpen ? "mark_client_chat_read" : "mark_client_chat_delivered";
+          const rpcName = viewingConv ? "mark_client_chat_read" : "mark_client_chat_delivered";
           sb.rpc(rpcName, { p_client_id: currentClient.id }).then(({ error }) => { if (error) console.error(rpcName + " failed", error); });
         }
         if (m.sender !== "client") {
-          if (!clientChatPanelOpen) {
+          if (!viewingConv) {
             clientChatUnread++;
             updateClientChatUnreadBadge();
           }
           clientChatMaybeNotify(m);
           addNotifCenterItem({
             icon: "\u{1F4AC}",
-            title: clientChatThread.assigned_staff_name || "Support team",
+            title: clientChatThread.agent_name || clientChatThread.assigned_staff_name || "Support team",
             body: m.body || (m.attachment_name ? `Sent a file: ${m.attachment_name}` : "New message"),
-            onClick: () => { if (!clientChatPanelOpen) document.getElementById("chatFabBtn").click(); },
+            onClick: () => openClientChatConversation(),
             playSound: false,
           });
         }
         renderClientChatMessages();
+        renderClientChatHome();
       }
     )
     // v314: propagates an edit, or staff marking one of our messages
@@ -9259,7 +9646,25 @@ function subscribeClientChatRealtime() {
       "postgres_changes",
       { event: "UPDATE", schema: "public", table: "client_chat_threads", filter: `client_id=eq.${currentClient.id}` },
       async () => {
+        // v703: a thread change can END the conversation (staff pressed End
+        // chat; the thread went 'closed' and a trigger closed the
+        // conversation). If the client is reading it, keep it on screen as a
+        // finished conversation with a "Start new chat" button rather than
+        // wiping the transcript out from under them.
+        const wasConvId = clientChatCurrentConvId;
         await loadClientChatThread();
+        await loadClientChatConversations();
+        if (wasConvId && clientChatCurrentConvId !== wasConvId) {
+          if (clientChatView === "conv") {
+            clientChatPastConv = clientChatConvs.find((c) => c.id === wasConvId) || null;
+            clientChatPastMessages = clientChatMessages.slice();
+            clientChatPastReturnView = "home";
+            clientChatMessages = [];
+            setClientChatView("past");
+            return;
+          }
+          clientChatMessages = [];
+        }
         renderClientChatPanel();
       }
     )
