@@ -8293,6 +8293,7 @@ async function initClientChatWidget() {
   renderClientChatPanel();
   subscribeClientChatRealtime();
   initClientCallSignaling();
+  setTimeout(() => clientResumeSavedCall(), 1500);   // v707: a call this tab was on before a refresh
   initClientChatTypingSignaling();
   // v697: the first click or key after sign-in asks for notification
   // permission (so a call can alert a background tab) and unlocks audio (a
@@ -10015,6 +10016,214 @@ function callSend(channel, payload) {
   return channel.send({ type: "broadcast", event: "signal", payload: { ...payload, from: currentClient.id, fromName: `${currentClient.company_name || "Client"} \u2014 ${currentClient.full_name} (Client)` } });
 }
 
+// ---------------------------------------------------------------------------
+// v707: a call survives a refresh or a dropped connection -- the SAME
+// protocol as the staff portal (voiceSendRejoin there), so either side can
+// lead a reconnect: the tab remembers a live call for a minute, the side that
+// placed the call re-offers after a network blip, a reloaded tab re-offers
+// itself, and the other side answers without ringing. Gives up after a
+// minute, or sooner if the voice_calls row says staff hung up.
+const CLIENT_REJOIN_WINDOW_MS = 60000;
+const CLIENT_SAVED_CALL_KEY = "pt.clientActiveCall";
+function clientCallSaveForRejoin() {
+  const st = callState;
+  if (!st || st.status !== "answered" || !st.callRowId || !st.peerId) return;
+  try {
+    sessionStorage.setItem(CLIENT_SAVED_CALL_KEY, JSON.stringify({
+      callRowId: st.callRowId, peerId: st.peerId, peerName: st.peerName, role: st.role, savedAt: Date.now(),
+    }));
+  } catch (e) { /* private mode: no rejoin after a refresh */ }
+}
+function clientCallReadSaved() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(CLIENT_SAVED_CALL_KEY) || "null");
+    if (!saved || !saved.callRowId || !saved.peerId) return null;
+    if (Date.now() - (saved.savedAt || 0) > CLIENT_REJOIN_WINDOW_MS) { sessionStorage.removeItem(CLIENT_SAVED_CALL_KEY); return null; }
+    return saved;
+  } catch (e) { return null; }
+}
+function clientCallClearSaved() { try { sessionStorage.removeItem(CLIENT_SAVED_CALL_KEY); } catch (e) { /* nothing to clear */ } }
+function clientCallMarkLive(state) {
+  clientCallSaveForRejoin();
+  clearInterval(state.saveTimer);
+  state.saveTimer = setInterval(clientCallSaveForRejoin, 5000);
+}
+window.addEventListener("pagehide", clientCallSaveForRejoin);
+window.addEventListener("online", () => {
+  const st = callState;
+  if (st && st.reconnecting && (st.role === "caller" || st.restored)) clientCallSendRejoin(st);
+});
+
+function clientCallOnPcState(pc) {
+  const state = callState;
+  if (!state || state.pc !== pc) return;
+  const cs = pc.connectionState;
+  if (cs === "connected") { if (state.reconnecting) clientCallRejoinDone(state); return; }
+  if (state.status !== "answered") { if (cs === "failed") endClientVoiceCall("failed", true); return; }
+  if (cs === "disconnected" || cs === "failed") {
+    if (state.reconnecting) {
+      if (cs === "failed" && (state.role === "caller" || state.restored)) {
+        setTimeout(() => { if (callState === state && state.reconnecting && state.pc === pc) clientCallSendRejoin(state); }, 2000);
+      }
+      return;
+    }
+    clientCallBeginReconnect(state, cs === "failed" ? 0 : 3000);
+  }
+}
+function clientCallBeginReconnect(state, kickDelay) {
+  if (callState !== state || state.reconnecting) return;
+  const r = state.reconnecting = { since: Date.now() };
+  showCallBar(state.peerName, "Reconnecting\u2026", false);
+  r.deadline = setTimeout(() => { if (callState === state && state.reconnecting === r) endClientVoiceCall("ended", true); }, CLIENT_REJOIN_WINDOW_MS);
+  r.poll = setInterval(async () => {
+    if (callState !== state || state.reconnecting !== r || !state.callRowId) return;
+    const { data } = await sb.from("voice_calls").select("status").eq("id", state.callRowId).maybeSingle();
+    if (data && ["ended", "failed", "missed", "declined"].includes(data.status) && callState === state) endClientVoiceCall(null, false);
+  }, 5000);
+  if (kickDelay != null && state.role === "caller") {
+    r.kick = setTimeout(() => {
+      if (callState !== state || state.reconnecting !== r || !state.pc) return;
+      if (state.pc.connectionState === "connected") clientCallRejoinDone(state);
+      else clientCallSendRejoin(state);
+    }, kickDelay);
+  }
+}
+function clientCallClearReconnect(state) {
+  if (!state) return;
+  const r = state.reconnecting;
+  if (r) { clearTimeout(r.deadline); clearInterval(r.poll); clearTimeout(r.kick); }
+  state.reconnecting = null;
+  clearInterval(state.rejoinRetry);
+}
+function clientCallRejoinDone(state) {
+  clientCallClearReconnect(state);
+  state.rejoinId = null;
+  clientCallPlayConnectSound();
+  showCallBar(state.peerName, "Connected", true);
+  document.getElementById("callScreenShareBtn").style.display = "inline-block";
+  const track = state.localStream && state.localStream.getAudioTracks()[0];
+  if (track) document.getElementById("callMuteBtn").textContent = track.enabled ? "Mute" : "Unmute";
+  clientCallMarkLive(state);
+}
+async function clientCallEnsureChannel(state) {
+  if (state.outboundChannel) return;
+  state.outboundChannel = sb.channel("call-signal-" + state.peerId);
+  await callChannelReady(state.outboundChannel);
+}
+function clientCallDropScreenShare(state) {
+  if (state.screenStream) state.screenStream.getTracks().forEach((t) => t.stop());
+  state.screenStream = null; state.hasScreenShare = false; state.videoSender = null; state.peerSharing = false;
+  try { updateClientScreenShareUI(); } catch (e) { /* no call UI yet */ }
+}
+async function clientCallFlush(state) {
+  const queued = state.pendingCandidates || [];
+  state.pendingCandidates = [];
+  for (const c of queued) { try { await state.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { console.error(e); } }
+}
+async function clientCallBuildPc(state, tag) {
+  const channel = state.outboundChannel;
+  const pc = new RTCPeerConnection({ iceServers: await clientIceServers() });
+  state.localStream.getTracks().forEach((track) => pc.addTrack(track, state.localStream));
+  pc.ontrack = (e) => { document.getElementById(e.track.kind === "video" ? "remoteCallVideo" : "remoteCallAudio").srcObject = e.streams[0]; };
+  pc.onicecandidate = (e) => { if (e.candidate) callSend(channel, { type: "ice-candidate", candidate: e.candidate, tag }); };
+  pc.onconnectionstatechange = () => clientCallOnPcState(pc);
+  return pc;
+}
+function clientCallGenId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+async function clientCallSendRejoin(state) {
+  if (callState !== state) return;
+  const rejoinId = clientCallGenId();
+  state.rejoinId = rejoinId;
+  state.pcTag = rejoinId;
+  state.remoteDescSet = false;
+  state.pendingCandidates = [];
+  await clientCallEnsureChannel(state);
+  const old = state.pc;
+  clientCallDropScreenShare(state);
+  const pc = await clientCallBuildPc(state, rejoinId);
+  if (callState !== state || state.rejoinId !== rejoinId) { pc.close(); return; }
+  state.pc = pc;
+  if (old) { try { old.close(); } catch (e) { /* already closed */ } }
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  const payload = { type: "rejoin-request", callRowId: state.callRowId, rejoinId, sdp: offer };
+  callSend(state.outboundChannel, payload);
+  clearInterval(state.rejoinRetry);
+  state.rejoinRetry = setInterval(() => {
+    if (callState !== state || state.rejoinId !== rejoinId || state.remoteDescSet) { clearInterval(state.rejoinRetry); return; }
+    callSend(state.outboundChannel, payload);
+  }, 3000);
+}
+let clientCallRestoring = null;
+function clientCallEnsureRestored(saved) {
+  if (callState) return Promise.resolve(callState);
+  if (!clientCallRestoring) clientCallRestoring = clientCallRestoreFromSaved(saved).finally(() => { clientCallRestoring = null; });
+  return clientCallRestoring;
+}
+async function clientCallRestoreFromSaved(saved) {
+  let localStream;
+  try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) {
+    clientCallClearSaved();
+    alert("Your call dropped when the page reloaded, and the microphone is blocked, so it could not reconnect. Allow the microphone and call again.");
+    return null;
+  }
+  if (callState) { localStream.getTracks().forEach((t) => t.stop()); return callState; }
+  const outboundChannel = sb.channel("call-signal-" + saved.peerId);
+  await callChannelReady(outboundChannel);
+  callState = { role: saved.role, peerId: saved.peerId, peerName: saved.peerName, pc: null, localStream, outboundChannel, callRowId: saved.callRowId, status: "answered", remoteDescSet: false, pendingCandidates: [], videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false, restored: true };
+  clientCallBeginReconnect(callState, null);
+  return callState;
+}
+async function clientResumeSavedCall() {
+  const saved = clientCallReadSaved();
+  if (!saved || callState) return;
+  const state = await clientCallEnsureRestored(saved);
+  if (!state || state.callRowId !== saved.callRowId) return;
+  const { data } = await sb.from("voice_calls").select("status").eq("id", saved.callRowId).maybeSingle();
+  if (data && data.status !== "answered") { if (callState === state) endClientVoiceCall(null, false); return; }
+  if (callState === state && !state.answeredRejoinId && !state.rejoinId && !state.remoteDescSet) clientCallSendRejoin(state);
+}
+async function clientHandleRejoinRequest(msg) {
+  let state = callState;
+  if (!state) {
+    const saved = clientCallReadSaved();
+    if (!saved || saved.callRowId !== msg.callRowId || saved.peerId !== msg.from) return;
+    state = await clientCallEnsureRestored(saved);
+    if (!state) return;
+  }
+  if (state.callRowId !== msg.callRowId || state.peerId !== msg.from || state.status !== "answered") return;
+  if (state.answeredRejoinId === msg.rejoinId) {
+    if (state.lastRejoinAnswer && state.outboundChannel) callSend(state.outboundChannel, state.lastRejoinAnswer);
+    return;
+  }
+  if (state.rejoinId && state.rejoinId !== msg.rejoinId && !state.remoteDescSet && state.rejoinId < msg.rejoinId) return;
+  clearInterval(state.rejoinRetry);
+  state.rejoinId = null;
+  state.pcTag = msg.rejoinId;
+  state.remoteDescSet = false;
+  state.pendingCandidates = (state.candidateStash && state.candidateStash[msg.rejoinId]) || [];
+  if (state.candidateStash) delete state.candidateStash[msg.rejoinId];
+  if (!state.reconnecting) clientCallBeginReconnect(state, null);
+  await clientCallEnsureChannel(state);
+  const old = state.pc;
+  clientCallDropScreenShare(state);
+  const pc = await clientCallBuildPc(state, msg.rejoinId);
+  if (callState !== state || state.pcTag !== msg.rejoinId) { pc.close(); return; }
+  state.pc = pc;
+  if (old) { try { old.close(); } catch (e) { /* already closed */ } }
+  await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+  state.remoteDescSet = true;
+  await clientCallFlush(state);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  state.answeredRejoinId = msg.rejoinId;
+  state.lastRejoinAnswer = { type: "rejoin-answer", callRowId: state.callRowId, rejoinId: msg.rejoinId, sdp: answer };
+  callSend(state.outboundChannel, state.lastRejoinAnswer);
+}
+
 async function startClientVoiceCall() {
   if (callState) { alert("You're already on a call."); return; }
   if (clientChatThread.status !== "routed" || !clientChatThread.assigned_staff_id) return;
@@ -10041,7 +10250,7 @@ async function startClientVoiceCall() {
     document.getElementById(e.track.kind === "video" ? "remoteCallVideo" : "remoteCallAudio").srcObject = e.streams[0];
   };
   pc.onicecandidate = (e) => { if (e.candidate) callSend(outboundChannel, { type: "ice-candidate", candidate: e.candidate }); };
-  pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") endClientVoiceCall("failed", true); };
+  pc.onconnectionstatechange = () => clientCallOnPcState(pc);   // v707: reconnects instead of ending
 
   // portal_audit_chunk3.md #6: error was never checked -- on an insert
   // failure the call still placed fine via the broadcast signaling channel,
@@ -10062,7 +10271,7 @@ async function startClientVoiceCall() {
     tag: `call-${callRow ? callRow.id : calleeId}`, url: "/", require_interaction: true,
   } }).then(({ error }) => { if (error) console.warn("call push to staff failed", error); }).catch(() => {});
 
-  callState = { peerId: calleeId, peerName: calleeName, pc, localStream, outboundChannel, callRowId: callRow ? callRow.id : null, status: "ringing", remoteDescSet: false, pendingCandidates: [], videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false };
+  callState = { role: "caller", peerId: calleeId, peerName: calleeName, pc, localStream, outboundChannel, callRowId: callRow ? callRow.id : null, status: "ringing", remoteDescSet: false, pendingCandidates: [], videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false };
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -10100,14 +10309,25 @@ async function handleClientCallSignal(msg) {
   if (msg.type === "offer") {
     if (callState) { clientCallSendOneOff(msg.from, { type: "busy" }); return; } // already on/starting a call
     if (msg.callRowId) clientRangCallIds.add(msg.callRowId);
-    callState = { peerId: msg.from, peerName: msg.fromName || "Staff", pc: null, localStream: null, outboundChannel: null, callRowId: msg.callRowId || null, status: "ringing", remoteDescSet: false, pendingCandidates: [], offerSdp: msg.sdp, videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false };
+    callState = { role: "callee", peerId: msg.from, peerName: msg.fromName || "Staff", pc: null, localStream: null, outboundChannel: null, callRowId: msg.callRowId || null, status: "ringing", remoteDescSet: false, pendingCandidates: [], offerSdp: msg.sdp, videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false };
     document.getElementById("incomingCallName").textContent = callState.peerName;
     document.getElementById("incomingCallBanner").classList.add("show");
     clientCallStartRingtone("incoming");
     clientCallAlertStart(callState.peerName);   // v697
     return;
   }
+  // v707: may arrive with no callState at all -- this tab was just reloaded.
+  if (msg.type === "rejoin-request") { await clientHandleRejoinRequest(msg); return; }
   if (!callState) return;
+  if (msg.type === "rejoin-answer") {   // v707
+    const st = callState;
+    if (st.callRowId !== msg.callRowId || st.rejoinId !== msg.rejoinId || !st.pc || st.remoteDescSet) return;
+    clearInterval(st.rejoinRetry);
+    await st.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    st.remoteDescSet = true;
+    await clientCallFlush(st);
+    return;
+  }
   if (msg.type === "answer") {
     clientCallStopRingtone();
     await callState.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
@@ -10120,7 +10340,19 @@ async function handleClientCallSignal(msg) {
     clientCallPlayConnectSound();   // v699: as on the staff side
     showCallBar(callState.peerName, "Connected", true);
     document.getElementById("callScreenShareBtn").style.display = "inline-block";
+    clientCallMarkLive(callState);   // v707
   } else if (msg.type === "ice-candidate" && msg.candidate) {
+    // v707: candidates carry the connection they belong to (see the staff
+    // portal's handler): one for a reconnect not built yet is kept for it,
+    // one from a replaced connection is dropped.
+    const tag = msg.tag || "o";
+    if (tag !== (callState.pcTag || "o")) {
+      if (tag !== "o") {
+        const stash = callState.candidateStash || (callState.candidateStash = {});
+        (stash[tag] || (stash[tag] = [])).push(msg.candidate);
+      }
+      return;
+    }
     if (callState.remoteDescSet) { try { await callState.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch (e) { console.error(e); } }
     else callState.pendingCandidates.push(msg.candidate);
   } else if (msg.type === "renegotiate-offer") {
@@ -10258,7 +10490,7 @@ async function acceptClientIncomingCall() {
     document.getElementById(e.track.kind === "video" ? "remoteCallVideo" : "remoteCallAudio").srcObject = e.streams[0];
   };
   pc.onicecandidate = (e) => { if (e.candidate) callSend(outboundChannel, { type: "ice-candidate", candidate: e.candidate }); };
-  pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") endClientVoiceCall("failed", true); };
+  pc.onconnectionstatechange = () => clientCallOnPcState(pc);   // v707: reconnects instead of ending
 
   callState.pc = pc;
   callState.localStream = localStream;
@@ -10278,6 +10510,7 @@ async function acceptClientIncomingCall() {
   clientCallPlayConnectSound();   // v699: as on the staff side
   showCallBar(callState.peerName, "Connected", true);
   document.getElementById("callScreenShareBtn").style.display = "inline-block";
+  clientCallMarkLive(callState);   // v707
 }
 
 function declineClientIncomingCall() {
@@ -10295,6 +10528,9 @@ function endClientVoiceCall(finalStatus, notifyPeer) {
   const state = callState;
   clearTimeout(state.ringTimeout);
   clearInterval(state.offerRetry);   // v700
+  clearInterval(state.saveTimer);   // v707
+  clientCallClearReconnect(state);
+  clientCallClearSaved();
   clientCallStopRingtone();
   clientCallAlertStop();   // v697
   // v699: the staff portal's hang-up cue, only for a call that was actually
