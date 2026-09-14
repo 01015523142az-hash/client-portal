@@ -1689,6 +1689,117 @@
   :focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
   ::selection{ background:var(--focus-dim); color:var(--text); }
 
+  /* =========================================================================
+     v693: the owner's review of v692.
+     - The two rules v692 drew (the menu's right edge, the line under the
+       top bar) go: the menu and the page read as one surface.
+     - Bell, theme and Tweaks buttons are the staff portal's round outlined
+       icon buttons, and the bell is its 🔔.
+     - A profile menu (the staff portal's v641 geometry) replaces the Sign
+       out button and the Profile Details tab.
+     - Dashboard cards each get their own colour -- teal, violet, green,
+       blue: the staff portal's Activity-card set -- instead of gold on every
+       card, and the two header buttons pick up the same palette.
+     ========================================================================= */
+  html header.appbar, html[data-tweak-appbar] header.appbar, html[data-theme="light"] header.appbar{
+    border-right:none !important; border-bottom:none !important;
+  }
+  .app-topbar, .app-topbar.scrolled{ border-bottom:none !important; }
+
+  .who-controls .notif-bell-btn, .who-controls .theme-toggle-btn,
+  :root[data-theme="light"] .who-controls .notif-bell-btn,
+  :root[data-theme="light"] .who-controls .theme-toggle-btn{
+    width:34px; height:34px; padding:0; border-radius:50%;
+    background:transparent; border:1px solid var(--border-light); color:var(--text-2);
+    font-size:15px; line-height:1; display:inline-flex; align-items:center; justify-content:center;
+    box-shadow:none; transform:none;
+  }
+  .who-controls .notif-bell-btn:hover, .who-controls .theme-toggle-btn:hover,
+  :root[data-theme="light"] .who-controls .notif-bell-btn:hover,
+  :root[data-theme="light"] .who-controls .theme-toggle-btn:hover{
+    border-color:var(--focus); color:var(--focus); background:var(--focus-dim); transform:none; box-shadow:none;
+  }
+  .notif-bell-btn.ringing{ color:var(--text-2); }
+
+  /* ---- profile menu (staff portal v641) ---- */
+  #profileNavBtn{ display:none !important; }
+  .profile-menu-wrap{ position:relative; }
+  .profile-menu-btn{
+    width:34px; height:34px; padding:0; border-radius:50%;
+    background:linear-gradient(to top right, var(--chat-accent-1), var(--chat-accent-2));
+    color:#1A1206; border:1px solid rgba(201,166,107,.45);
+    font-family:var(--sans); font-weight:800; font-size:12px; letter-spacing:.02em;
+    display:inline-flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:filter .15s ease, transform .15s ease;
+  }
+  .profile-menu-btn:hover{ filter:brightness(1.08); }
+  .profile-menu-btn:active{ transform:scale(.95); }
+  .profile-menu-panel{
+    position:absolute; top:calc(100% + 8px); right:0; z-index:500;
+    width:300px; max-width:calc(100vw - 32px); max-height:calc(100vh - 90px); overflow-y:auto; padding:14px;
+    background:color-mix(in srgb, var(--card) 97%, transparent);
+    border:1px solid var(--border-light); border-radius:14px;
+    box-shadow:0 20px 44px -12px rgba(0,0,0,.5);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    animation:profileMenuIn .16s cubic-bezier(0.16,1,0.3,1);
+    text-align:left;
+  }
+  @keyframes profileMenuIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:none; } }
+  @media (prefers-reduced-motion:reduce){ .profile-menu-panel{ animation:none; } }
+  .profile-menu-head{ display:flex; align-items:center; gap:11px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+  .profile-menu-avatar{
+    width:42px; height:42px; border-radius:50%; flex-shrink:0;
+    background:linear-gradient(to top right, var(--chat-accent-1), var(--chat-accent-2));
+    color:#1A1206; font-family:var(--sans); font-weight:800; font-size:14px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .profile-menu-name{ font-family:var(--sans); font-weight:700; font-size:13.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .profile-menu-role{ font-family:var(--sans); font-size:11.5px; font-weight:600; color:var(--gold); margin-top:1px; }
+  .profile-menu-contact{ font-family:var(--mono); font-size:10.5px; color:var(--text-2); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .profile-menu-contact:empty, .profile-menu-role:empty{ display:none; }
+  .profile-menu-item, .profile-menu-signout{
+    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; margin:10px 0 0;
+    padding:8px 12px; border-radius:9px; cursor:pointer;
+    font-family:var(--sans); font-size:12.5px; font-weight:600;
+  }
+  .profile-menu-item{ background:transparent; color:var(--text); border:1px solid var(--border-light); }
+  .profile-menu-item:hover{ border-color:var(--focus); color:var(--focus); background:var(--focus-dim); }
+  .profile-menu-signout{ background:var(--inset); color:var(--text); border:1px solid var(--border-light); }
+  .profile-menu-signout:hover{ background:var(--danger); border-color:var(--danger); color:#fff; }
+  .profile-menu-edit{ margin-top:10px; padding-top:2px; border-top:1px solid var(--border); }
+  .profile-menu-hint{ font-size:11.5px; color:var(--text-2); line-height:1.5; margin-top:10px; }
+  .profile-menu-edit label{ margin:10px 0 5px; font-size:10.5px; }
+  .profile-menu-edit input{ padding:9px 11px; font-size:13px; }
+  .profile-menu-edit .btn-primary{ width:100% !important; margin-top:4px; padding:10px; }
+
+  /* ---- dashboard cards: a colour each ---- */
+  .stat-grid .stat-card{ position:relative; overflow:hidden; border-top-color:var(--border); --acc:var(--teal); --acc2:var(--info); }
+  .stat-grid .stat-card::before{
+    content:''; position:absolute; left:0; right:0; top:0; height:3px;
+    background:linear-gradient(90deg, var(--acc), var(--acc2));
+  }
+  .stat-grid .stat-card:nth-child(6n+1){ --acc:var(--teal);    --acc2:var(--info); }
+  .stat-grid .stat-card:nth-child(6n+2){ --acc:var(--violet);  --acc2:var(--info); }
+  .stat-grid .stat-card:nth-child(6n+3){ --acc:var(--success); --acc2:var(--teal); }
+  .stat-grid .stat-card:nth-child(6n+4){ --acc:var(--info);    --acc2:var(--violet); }
+  .stat-grid .stat-card:nth-child(6n+5){ --acc:var(--gold);    --acc2:var(--gold-soft); }
+  .stat-grid .stat-card:nth-child(6n+6){ --acc:var(--violet);  --acc2:var(--teal); }
+  .stat-grid .stat-card .stat-icon{ background:color-mix(in srgb, var(--acc) 16%, transparent); color:var(--acc); }
+  .stat-grid .stat-card .stat-value{ color:var(--text); }
+  .stat-grid .stat-card:hover{ border-color:color-mix(in srgb, var(--acc) 45%, var(--border)); }
+
+  /* ---- header buttons from the same palette ---- */
+  #openCreateCampaignBtn, :root[data-theme="light"] #openCreateCampaignBtn{
+    background:linear-gradient(135deg, #5B3FE0, #1F6FD8) !important; border-color:transparent !important;
+    color:#FFFFFF !important;
+  }
+  #openCreateCampaignBtn:hover{ filter:brightness(1.08); box-shadow:0 10px 22px -12px rgba(91,63,224,.75) !important; }
+  #relaunchTourBtn, :root[data-theme="light"] #relaunchTourBtn{
+    background:color-mix(in srgb, var(--teal) 10%, transparent) !important;
+    border-color:color-mix(in srgb, var(--teal) 55%, transparent) !important; color:var(--teal) !important;
+  }
+  #relaunchTourBtn:hover{ background:color-mix(in srgb, var(--teal) 18%, transparent) !important; box-shadow:none !important; }
+
 </style>
 
 </head>
@@ -1976,12 +2087,7 @@
         </button>
         <div class="notif-center-wrap" id="notifCenterWrap">
           <button class="notif-bell-btn" id="notifBellBtn" title="Notifications">
-            <span class="notif-bell-icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3C9.24 3 7 5.24 7 8v3.5c0 .6-.24 1.18-.66 1.6L5 14.5V16h14v-1.5l-1.34-1.4A2.27 2.27 0 0 1 17 11.5V8c0-2.76-2.24-5-5-5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" data-comment-anchor="a4ef92d59c-path"></path>
-                <path d="M9.5 18.5a2.5 2.5 0 0 0 5 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
-              </svg>
-            </span>
+            <span class="notif-bell-icon">🔔</span>
             <span id="notifBellBadge" class="notif-bell-badge" style="display:none;">0</span>
           </button>
           <div class="notif-center-panel" id="notifCenterPanel" style="display:none;">
@@ -2013,7 +2119,38 @@
           </div>
         </div>
         <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle light/dark theme" style="position:static;">🌙</button>
-        <button class="btn-ghost" id="logoutBtn">Sign out</button>
+        <!-- v693: profile menu, like the staff portal's (v641). The Profile
+             Details form moved in here with its ids, and logoutBtn moved in
+             with its id, so their existing handlers are untouched. -->
+        <div class="profile-menu-wrap" id="profileMenuWrap">
+          <button type="button" class="profile-menu-btn" id="profileMenuBtn" title="Your profile" aria-haspopup="menu" aria-expanded="false"><span id="profileMenuInitials">—</span></button>
+          <div class="profile-menu-panel" id="profileMenuPanel" style="display:none;" role="menu">
+            <div class="profile-menu-head">
+              <div class="profile-menu-avatar" id="profileMenuAvatar">—</div>
+              <div style="min-width:0;">
+                <div class="profile-menu-name" id="profileMenuName"></div>
+                <div class="profile-menu-role" id="profileMenuCompany"></div>
+                <div class="profile-menu-contact" id="profileMenuEmail"></div>
+                <div class="profile-menu-contact" id="profileMenuPhone"></div>
+              </div>
+            </div>
+            <button type="button" class="profile-menu-item" id="profileMenuEditBtn">&#9998; Edit profile</button>
+            <div class="profile-menu-edit hidden" id="profileMenuEdit">
+              <div class="profile-menu-hint">Your email is also your login — a change takes effect immediately.</div>
+              <label for="accountDetailsEmail">Email</label>
+        <input type="email" id="accountDetailsEmail" autocomplete="email">
+        <label for="accountDetailsPhone">Mobile number</label>
+        <input type="tel" id="accountDetailsPhone" autocomplete="tel">
+        <label for="accountDetailsCompany">Company name</label>
+        <input type="text" id="accountDetailsCompany" autocomplete="organization">
+        <div style="margin-top:14px;">
+          <button class="btn-primary" id="accountDetailsSaveBtn" type="button" style="width:auto;">Save changes</button>
+        </div>
+        <div class="msg hidden" id="accountDetailsMsg" style="margin-top:10px;"></div>
+            </div>
+            <button type="button" class="profile-menu-signout" id="logoutBtn">Sign out</button>
+          </div>
+        </div>
       </div>
     </div>
     </div>
@@ -2454,17 +2591,7 @@
       </div>
       <div class="panel">
         <div class="panel-title">Account details</div>
-        <div style="font-size:11.5px; color:var(--text-2); margin-bottom:12px;">Your email is also your login — changing it takes effect immediately, no confirmation email needed.</div>
-        <label for="accountDetailsEmail">Email</label>
-        <input type="email" id="accountDetailsEmail" autocomplete="email">
-        <label for="accountDetailsPhone">Mobile number</label>
-        <input type="tel" id="accountDetailsPhone" autocomplete="tel">
-        <label for="accountDetailsCompany">Company name</label>
-        <input type="text" id="accountDetailsCompany" autocomplete="organization">
-        <div style="margin-top:14px;">
-          <button class="btn-primary" id="accountDetailsSaveBtn" type="button" style="width:auto;">Save changes</button>
-        </div>
-        <div class="msg hidden" id="accountDetailsMsg" style="margin-top:10px;"></div>
+        <div style="font-size:12.5px; color:var(--text-2); line-height:1.6;">Your profile now lives in the menu at the top right — click your initials to see your details and update them.</div>
       </div>
     </section>
   </main>
@@ -2473,13 +2600,6 @@
 
 <div id="tweaksPanel" class="tweaks-panel" style="display:none;">
   <div class="tweaks-panel-title"><span>Tweaks</span><button id="tweaksCloseBtn" title="Close">×</button></div>
-  <div class="tweaks-row">
-    <div class="tweaks-label">Header style</div>
-    <div class="tweaks-seg" data-tweak-group="appbar">
-      <button data-value="coral">Coral</button>
-      <button data-value="glass" class="active">Midnight Glass</button>
-    </div>
-  </div>
   <div class="tweaks-row">
     <div class="tweaks-label">Layout density</div>
     <div class="tweaks-seg" data-tweak-group="density">
@@ -2617,89 +2737,91 @@
        float/wave/blink animations are pure CSS (see .mascot-* rules
        above) — no JS, no extra assets. -->
   <button id="chatFabBtn" class="chat-fab" title="Ask Remi" data-comment-anchor="9a622bb5e3-button">
-    <svg class="mascot-svg" viewBox="0 0 140 175" xmlns="http://www.w3.org/2000/svg">
+    <svg class="mascot-svg" viewBox="0 0 140 175" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <!-- v693: Remi redrawn from the owner's Aura-One reference ("Idle
+           Standing Smiling", design-mascot-main): slate chassis with
+           champagne-gold piping, dark visor with a glowing gold smile, gold
+           antennae over round ears, the A+ chest mark and a gold pencil in
+           the right hand. The class hooks the CSS animates are unchanged:
+           mascot-body-group (float, gesture), mascot-wave-arm (hover wave),
+           mascot-shadow, aura-face / aura-blink (blink), aura-beacon. -->
       <defs>
-        <linearGradient id="auraGold" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F3E3C3"/><stop offset="50%" stop-color="#E2B774"/><stop offset="100%" stop-color="#C59B4E"/></linearGradient>
-        <linearGradient id="auraSlate" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#2A384F"/><stop offset="100%" stop-color="#1E293B"/></linearGradient>
-        <linearGradient id="auraVisor" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0B111D"/><stop offset="100%" stop-color="#0F172A"/></linearGradient>
-        <filter id="auraGlow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-        
-        <filter id="mascotShadow" x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.35"></feDropShadow>
-        </filter>
-        <linearGradient id="mascotMetal" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#2B313D"></stop>
-          <stop offset="55%" stop-color="#171B23"></stop>
-          <stop offset="100%" stop-color="#0C0F14"></stop>
-        </linearGradient>
-        <linearGradient id="mascotMetalLight" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#3A424F"></stop>
-          <stop offset="100%" stop-color="#1D222C"></stop>
-        </linearGradient>
-        <radialGradient id="mascotLens" cx="35%" cy="30%" r="75%">
-          <stop offset="0%" stop-color="#FFFFFF"></stop>
-          <stop offset="100%" stop-color="#D9DEE6"></stop>
-        </radialGradient>
+        <linearGradient id="remiSlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5A6479"/><stop offset="100%" stop-color="#3C4557"/></linearGradient>
+        <linearGradient id="remiSlateDark" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#363E4F"/><stop offset="100%" stop-color="#252C3A"/></linearGradient>
+        <linearGradient id="remiGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#F6DFAE"/><stop offset="55%" stop-color="#E2B774"/><stop offset="100%" stop-color="#C79A4F"/></linearGradient>
+        <linearGradient id="remiVisor" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1B2334"/><stop offset="100%" stop-color="#0A0E17"/></linearGradient>
+        <filter id="remiGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="1.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="remiShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/></filter>
       </defs>
-      <ellipse cx="70" cy="168" rx="26" ry="5" fill="#000000" opacity="0.25" class="mascot-shadow"></ellipse>
-      <g class="mascot-body-group" filter="url(#mascotShadow)">
-        <!-- v633: Aura-One head, ported from the mascot design reference
-             (VisorExpressionSimulator.tsx, viewBox 260). Scaled 1/3 and
-             translated so the antenna tip lands where the old head's did --
-             see the v633 note in the generator for the arithmetic. -->
-        <g class="aura-head" transform="translate(26.667,0) scale(0.333333)">
-          <rect x="127" y="18" width="6" height="28" rx="3" fill="url(#auraGold)"/>
-          <circle cx="130" cy="16" r="7" fill="url(#auraGold)"/>
-          <circle class="aura-beacon" cx="130" cy="16" r="4" fill="#38BDF8" filter="url(#auraGlow)"/>
-          <rect x="22" y="106" width="16" height="48" rx="8" fill="url(#auraGold)"/>
-          <rect x="222" y="106" width="16" height="48" rx="8" fill="url(#auraGold)"/>
-          <circle cx="30" cy="130" r="3.5" fill="#1E293B"/>
-          <circle cx="230" cy="130" r="3.5" fill="#1E293B"/>
-          <rect x="34" y="42" width="192" height="176" rx="68" fill="url(#auraSlate)" stroke="#334155" stroke-width="2.5"/>
-          <path d="M 72 70 Q 130 63 188 70" fill="none" stroke="url(#auraGold)" stroke-width="3.5" stroke-linecap="round"/>
-          <rect x="48" y="78" width="164" height="104" rx="42" fill="url(#auraVisor)" stroke="#1E293B" stroke-width="2"/>
-          <path d="M 64 88 Q 130 84 196 92" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.15" stroke-linecap="round"/>
-          <g class="aura-face" filter="url(#auraGlow)">
-            <path d="M 80 132 Q 98 110 116 132" fill="none" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
-            <path d="M 144 132 Q 162 110 180 132" fill="none" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
-            <path d="M 120 148 Q 130 156 140 148" fill="none" stroke="#38BDF8" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="74" cy="144" r="4.5" fill="#E2B774" opacity="0.8"/>
-            <circle cx="186" cy="144" r="4.5" fill="#E2B774" opacity="0.8"/>
+      <ellipse class="mascot-shadow" cx="70" cy="169" rx="30" ry="4.5" fill="#000000" opacity="0.22"></ellipse>
+      <g class="mascot-body-group" filter="url(#remiShadow)">
+        <rect x="53" y="121" width="14" height="37" rx="6" fill="url(#remiSlate)" stroke="#262D3B" stroke-width="1.2"/>
+        <rect x="73" y="121" width="14" height="37" rx="6" fill="url(#remiSlate)" stroke="#262D3B" stroke-width="1.2"/>
+        <path d="M57.5 124 V154 M82.5 124 V154" stroke="#E2B774" stroke-width="1.2" stroke-linecap="round"/>
+        <circle cx="61" cy="138" r="4.6" fill="url(#remiSlateDark)"/>
+        <circle cx="79" cy="138" r="4.6" fill="url(#remiSlateDark)"/>
+        <circle cx="63.5" cy="147" r="1.5" fill="#F4C77A" filter="url(#remiGlow)"/>
+        <circle cx="76.5" cy="147" r="1.5" fill="#F4C77A" filter="url(#remiGlow)"/>
+        <rect x="52" y="151" width="16" height="2.6" rx="1.3" fill="url(#remiGold)"/>
+        <rect x="72" y="151" width="16" height="2.6" rx="1.3" fill="url(#remiGold)"/>
+        <rect x="47" y="155" width="22" height="9" rx="4.5" fill="url(#remiSlateDark)"/>
+        <rect x="71" y="155" width="22" height="9" rx="4.5" fill="url(#remiSlateDark)"/>
+        <rect x="48.5" y="162" width="19" height="2" rx="1" fill="url(#remiGold)"/>
+        <rect x="72.5" y="162" width="19" height="2" rx="1" fill="url(#remiGold)"/>
+        <path d="M50 108 H90 L86 124 Q70 130 54 124 Z" fill="url(#remiSlate)" stroke="#262D3B" stroke-width="1.2"/>
+        <path d="M52 111 Q70 117 88 111" fill="none" stroke="#E2B774" stroke-width="1.2"/>
+        <circle cx="55.5" cy="114" r="1.5" fill="#E2B774"/>
+        <circle cx="84.5" cy="114" r="1.5" fill="#E2B774"/>
+        <path d="M43 79 L39 96 L38 111" fill="none" stroke="#262D3B" stroke-width="11.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M43 79 L39 96 L38 111" fill="none" stroke="#4B5569" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="38.6" cy="103" r="4.2" fill="url(#remiSlateDark)" stroke="#E2B774" stroke-width="1.4"/>
+        <circle cx="38.6" cy="103" r="1.6" fill="#F4C77A" filter="url(#remiGlow)"/>
+        <rect x="33" y="110" width="10.5" height="11" rx="4.5" fill="#2F3747"/>
+        <path d="M45 72 Q45 66 51 66 H89 Q95 66 95 72 L91 99 Q88 107 80 109 H60 Q52 107 49 99 Z" fill="url(#remiSlate)" stroke="#262D3B" stroke-width="1.3"/>
+        <path d="M53 67 Q70 76 87 67" fill="none" stroke="#E2B774" stroke-width="2"/>
+        <path d="M49.5 74 Q51.5 91 60 99 M90.5 74 Q88.5 91 80 99" fill="none" stroke="#E2B774" stroke-width="1.3" stroke-linecap="round"/>
+        <path d="M57 99.5 Q70 105 83 99.5" fill="none" stroke="#E2B774" stroke-width="1.3"/>
+        <text x="66" y="92" text-anchor="middle" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="800" fill="url(#remiGold)">A</text>
+        <path d="M75 80.5 l1 2.2 2.2 1 -2.2 1 -1 2.2 -1 -2.2 -2.2 -1 2.2 -1 Z" fill="#F4C77A"/>
+        <circle cx="84" cy="77.5" r="1.5" fill="#F4C77A" filter="url(#remiGlow)"/>
+        <circle cx="44" cy="74" r="7.5" fill="url(#remiSlateDark)" stroke="#262D3B" stroke-width="1.2"/>
+        <circle cx="44" cy="74" r="2.4" fill="#F4C77A" filter="url(#remiGlow)"/>
+        <circle cx="96" cy="74" r="7.5" fill="url(#remiSlateDark)" stroke="#262D3B" stroke-width="1.2"/>
+        <circle cx="96" cy="74" r="2.4" fill="#F4C77A" filter="url(#remiGlow)"/>
+        <g class="mascot-wave-arm" style="transform-origin:96px 74px;">
+          <path d="M97 79 L104 95 L114 85" fill="none" stroke="#262D3B" stroke-width="11.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M97 79 L104 95 L114 85" fill="none" stroke="#4B5569" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M110.5 84.5 L114 88" stroke="#E2B774" stroke-width="2" stroke-linecap="round"/>
+          <g transform="rotate(14 118 74)" filter="url(#remiGlow)">
+            <rect x="115.5" y="60" width="5" height="27" rx="2.5" fill="url(#remiGold)"/>
+            <path d="M115.5 60.5 L118 54.5 L120.5 60.5 Z" fill="#F6DFAE"/>
           </g>
-          <g class="aura-blink" filter="url(#auraGlow)">
-            <line x1="82" y1="130" x2="114" y2="130" stroke="#38BDF8" stroke-width="4" stroke-linecap="round"/>
-            <line x1="146" y1="130" x2="178" y2="130" stroke="#38BDF8" stroke-width="4" stroke-linecap="round"/>
-          </g>
+          <rect x="112" y="76" width="11" height="11" rx="4.5" fill="#2F3747"/>
+          <path d="M113.5 79.5 H121.5 M113.5 82.5 H121.5" stroke="#44506A" stroke-width="1"/>
         </g>
-        <rect x="63" y="60" width="14" height="8" fill="#0C0F14"></rect>
-        <rect x="63" y="60" width="14" height="3" fill="#FFFFFF" opacity="0.06"></rect>
-        <g transform="rotate(24 28 88)">
-          <rect x="22" y="88" width="12" height="34" rx="6" fill="url(#mascotMetal)" stroke="var(--gold)" stroke-width="2"></rect>
-          <rect x="22" y="102" width="12" height="3" fill="#000000" opacity="0.35"></rect>
-          <circle cx="28" cy="122" r="8" fill="var(--gold)"></circle>
+        <rect x="63" y="59" width="14" height="9" rx="2" fill="#252C3A"/>
+        <rect x="36.5" y="16" width="4" height="15" rx="2" fill="url(#remiGold)" filter="url(#remiGlow)"/>
+        <rect x="99.5" y="16" width="4" height="15" rx="2" fill="url(#remiGold)" filter="url(#remiGlow)"/>
+        <circle class="aura-beacon" cx="38.5" cy="16.5" r="2.3" fill="#FBE7BE" filter="url(#remiGlow)"/>
+        <circle class="aura-beacon" cx="101.5" cy="16.5" r="2.3" fill="#FBE7BE" filter="url(#remiGlow)"/>
+        <rect x="33" y="28" width="11" height="22" rx="5.5" fill="url(#remiSlateDark)" stroke="#E2B774" stroke-width="1.4"/>
+        <rect x="96" y="28" width="11" height="22" rx="5.5" fill="url(#remiSlateDark)" stroke="#E2B774" stroke-width="1.4"/>
+        <rect x="36.3" y="32" width="4.4" height="14" rx="2.2" fill="#F4C77A" opacity="0.9" filter="url(#remiGlow)"/>
+        <rect x="99.3" y="32" width="4.4" height="14" rx="2.2" fill="#F4C77A" opacity="0.9" filter="url(#remiGlow)"/>
+        <rect x="40" y="10" width="60" height="54" rx="27" fill="url(#remiSlate)" stroke="#262D3B" stroke-width="1.5"/>
+        <ellipse cx="70" cy="16.5" rx="11" ry="3.2" fill="#FFFFFF" opacity="0.14"/>
+        <path d="M59 11.5 Q56 17 55.5 22 M81 11.5 Q84 17 84.5 22" fill="none" stroke="#E2B774" stroke-width="1.4" stroke-linecap="round"/>
+        <rect x="45.5" y="22" width="49" height="35" rx="14" fill="url(#remiVisor)" stroke="url(#remiGold)" stroke-width="1.6"/>
+        <path d="M52 28.5 Q62 24.5 75 25.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2" stroke-linecap="round"/>
+        <g class="aura-face" filter="url(#remiGlow)">
+          <path d="M53.5 42 Q58.5 35.5 63.5 42" fill="none" stroke="#F4C77A" stroke-width="3" stroke-linecap="round"/>
+          <path d="M76.5 42 Q81.5 35.5 86.5 42" fill="none" stroke="#F4C77A" stroke-width="3" stroke-linecap="round"/>
+          <path d="M65 48 Q70 52.5 75 48" fill="none" stroke="#F4C77A" stroke-width="2.4" stroke-linecap="round"/>
         </g>
-        <circle cx="28" cy="88" r="9" fill="url(#mascotMetalLight)" stroke="var(--gold)" stroke-width="2"></circle>
-        <g class="mascot-wave-arm" style="transform-origin:112px 88px;">
-          <rect x="106" y="54" width="12" height="34" rx="6" fill="url(#mascotMetal)" stroke="var(--gold)" stroke-width="2"></rect>
-          <rect x="106" y="68" width="12" height="3" fill="#000000" opacity="0.35"></rect>
-          <circle cx="112" cy="54" r="8" fill="var(--gold)"></circle>
+        <g class="aura-blink" filter="url(#remiGlow)">
+          <path d="M54 40.5 H63 M77 40.5 H86" stroke="#F4C77A" stroke-width="2.6" stroke-linecap="round"/>
         </g>
-        <circle cx="112" cy="88" r="9" fill="url(#mascotMetalLight)" stroke="var(--gold)" stroke-width="2"></circle>
-        <rect x="28" y="72" width="84" height="66" rx="26" fill="url(#mascotMetal)" stroke="var(--gold)" stroke-width="2.5"></rect>
-        <path d="M32 78a30 40 0 000 52" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="4" fill="none" stroke-linecap="round"></path>
-        <rect x="28" y="72" width="84" height="10" rx="10" fill="#FFFFFF" opacity="0.05"></rect>
-        <circle cx="70" cy="104" r="17" fill="url(#mascotLens)" data-comment-anchor="4c2234ce6e-circle"></circle>
-        <ellipse cx="64" cy="97" rx="7" ry="4" fill="#FFFFFF" opacity="0.65" transform="rotate(-25 64 97)"></ellipse>
-        <circle cx="70" cy="104" r="17" fill="none" stroke="var(--gold)" stroke-width="1.5"></circle>
-        <image href="data:image/png;base64,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" x="55.5" y="88.35" width="29" height="31.3" data-comment-anchor="94ee80f747-circle"></image>
-        <rect x="40" y="132" width="17" height="26" rx="8" fill="url(#mascotMetal)" stroke="var(--gold)" stroke-width="2"></rect>
-        <rect x="83" y="132" width="17" height="26" rx="8" fill="url(#mascotMetal)" stroke="var(--gold)" stroke-width="2"></rect>
-        <rect x="40" y="144" width="17" height="3" fill="#000000" opacity="0.3"></rect>
-        <rect x="83" y="144" width="17" height="3" fill="#000000" opacity="0.3"></rect>
-        <ellipse cx="48.5" cy="160" rx="11" ry="5" fill="var(--gold)"></ellipse>
-        <ellipse cx="91.5" cy="160" rx="11" ry="5" fill="var(--gold)"></ellipse>
-        <ellipse cx="46" cy="158" rx="4" ry="1.6" fill="#FFFFFF" opacity="0.35"></ellipse>
-        <ellipse cx="89" cy="158" rx="4" ry="1.6" fill="#FFFFFF" opacity="0.35"></ellipse>
+        <path d="M51 58.5 Q70 65 89 58.5" fill="none" stroke="#E2B774" stroke-width="1.3" stroke-linecap="round"/>
       </g>
     </svg>
     <span class="mascot-label">Ask Remi</span>
@@ -3500,6 +3622,7 @@ function showApp() {
   document.getElementById("clientGreetingName").textContent = `Welcome, ${firstName}!`;
   document.getElementById("clientGreetingCompany").textContent = currentClient.company_name || "";
   updateTopbarBreadcrumb();
+  renderClientProfileMenu();   // v693
   // v161: warm time-of-day hero greeting atop the Dashboard tab (premium
   // "walk in the door" moment) — separate from the topbar's compact
   // "Welcome, X!" line, which stays as-is.
@@ -5214,10 +5337,70 @@ if (document.getElementById("accountDetailsSaveBtn")) document.getElementById("a
   currentClient.company_name = companyName;
   document.getElementById("clientGreetingCompany").textContent = companyName || "";
   updateTopbarBreadcrumb();
+  renderClientProfileMenu();   // v693
   msgEl.textContent = data.stripeWarning || "Saved.";
   msgEl.className = data.stripeWarning ? "msg error" : "msg";
   msgEl.classList.remove("hidden");
 });
+
+// ---------------------------------------------------------------------------
+// v693: profile menu, like the staff portal's (v641). The client's name and
+// contact details sit behind their initials at the top right, and the
+// Profile Details form moved INTO it -- same element ids, so
+// loadAccountDetailsForm() and the Save handler above run unchanged. The
+// Profile Details nav item is hidden by CSS rather than deleted, because the
+// tab switcher still toggles #tab-profile by id.
+// ---------------------------------------------------------------------------
+function clientProfileInitials(name, email) {
+  const src = (name || email || "").trim();
+  if (!src) return "—";
+  const parts = src.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return src.slice(0, 2).toUpperCase();
+}
+function renderClientProfileMenu() {
+  if (!currentClient) return;
+  const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const initials = clientProfileInitials(currentClient.full_name, currentClient.email);
+  setText("profileMenuInitials", initials);
+  setText("profileMenuAvatar", initials);
+  setText("profileMenuName", currentClient.full_name || currentClient.email || "");
+  setText("profileMenuCompany", currentClient.company_name || "");
+  setText("profileMenuEmail", currentClient.email || "");
+  setText("profileMenuPhone", currentClient.phone || "");
+  const btn = document.getElementById("profileMenuBtn");
+  if (btn) btn.title = [currentClient.full_name, currentClient.company_name].filter(Boolean).join(" — ") || "Your profile";
+}
+function clientProfileMenuSetOpen(open) {
+  const panel = document.getElementById("profileMenuPanel");
+  const btn = document.getElementById("profileMenuBtn");
+  if (!panel || !btn) return;
+  panel.style.display = open ? "block" : "none";
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) renderClientProfileMenu();
+  else document.getElementById("profileMenuEdit").classList.add("hidden");
+}
+(function wireClientProfileMenu() {
+  const btn = document.getElementById("profileMenuBtn");
+  if (!btn) return;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clientProfileMenuSetOpen(document.getElementById("profileMenuPanel").style.display === "none");
+  });
+  document.getElementById("profileMenuEditBtn").addEventListener("click", () => {
+    const edit = document.getElementById("profileMenuEdit");
+    const opening = edit.classList.contains("hidden");
+    if (opening) loadAccountDetailsForm();
+    edit.classList.toggle("hidden", !opening);
+    if (opening) document.getElementById("accountDetailsEmail").focus();
+  });
+  // Click-away and Escape, like every other menu here.
+  document.addEventListener("click", (e) => {
+    const wrap = document.getElementById("profileMenuWrap");
+    if (wrap && !wrap.contains(e.target)) clientProfileMenuSetOpen(false);
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") clientProfileMenuSetOpen(false); });
+})();
 
 // v292: dialer/data add-on price labels for the "Switch to our X" buttons
 // below — same constants Create Campaign's own live-price preview uses
@@ -5850,7 +6033,7 @@ const CLIENT_TOUR_STEPS = [
   { tab: "billing", subtab: "buy-credits", target: "#billingSubtab-buy-credits", title: "Billing \u2014 Buy Skip Tracing Credits", body: "Your skip trace credit balance (1 credit = 1 record) and a quick way to top it up \u2014 credits never expire." },
   { tab: "billing", subtab: "transactions", target: "#billingSubtab-transactions", title: "Billing \u2014 Transaction History", body: "Every completed charge on your account \u2014 subscriptions, one-time charges, list orders, and credit top-ups \u2014 in one running history." },
   { tab: "billing", subtab: "payment-method", target: "#billingSubtab-payment-method", title: "Billing \u2014 Payment Method", body: "The card on file for your account. Add or update it any time \u2014 removing it is blocked while you have an active campaign subscription." },
-  { tab: "profile", target: "#tab-profile", title: "Profile Details", body: "Update your login email, mobile number, or company name any time right here \u2014 changes sync straight to your billing records, so your invoices and receipts always match." },
+  { tab: "billing", target: "#profileMenuBtn", title: "Your profile", body: "Your name and contact details live in this menu at the top right \u2014 open it to update your login email, mobile number, or company name. Changes sync straight to your billing records, so your invoices and receipts always match." },
   // v303: always second-to-last, right before the closing step, regardless
   // of which tab everything else above ends on \u2014 per your call, this
   // isn't tied to Tickets specifically, it's the "before you go" reminder
