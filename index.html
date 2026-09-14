@@ -1607,6 +1607,24 @@
   :root[data-theme="light"] .chat-home-link,
   :root[data-theme="light"] .chat-home-card-go{ color:#7A5C22; }
 
+  /* ---- v704: who wrote each message ----
+     The staff member's photo beside their messages (Remi's face beside
+     Remi's), and a centred note when the chat changes hands. */
+  .chat-panel .chat-msg-row.with-av{ position:relative; margin-left:38px; max-width:calc(85% - 38px); }
+  .chat-msg-av{
+    position:absolute; left:-38px; top:0; width:30px; height:30px; border-radius:50%; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(to top right, var(--chat-accent-1), var(--chat-accent-2));
+    color:#1A1206; font-size:13px; font-weight:700;
+  }
+  .chat-msg-av img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .chat-msg-av.bot{ background:#2A3140; }
+  .chat-system-note{
+    align-self:center; max-width:90%; margin:8px auto; padding:5px 12px; border-radius:999px;
+    background:var(--inset); border:1px solid var(--border-light); color:var(--text-2);
+    font-size:11.5px; line-height:1.4; text-align:center;
+  }
+
 
   /* =========================================================================
      v642: notification centre rebuilt to the supplied reference, and
@@ -8145,6 +8163,8 @@ let clientChatPastConv = null;       // the finished conversation being read
 let clientChatPastMessages = [];
 let clientChatPastReturnView = "home";
 let clientChatHomeError = "";
+// v704: first name, title and photo of each staff member in this chat, by id.
+let clientChatStaffCards = {};
 
 // v102: chat teaser pop-up (the "Support team / Need assistance, Happy to
 // help!" bubble) — shown once per browser session a few seconds after the
@@ -8327,6 +8347,19 @@ async function loadClientChatThread() {
   }
   clientChatThread = { ...data, assigned_staff_name: assignedStaffName,
                        agent_name: agent && agent.name, agent_title: agent && agent.title };
+  await loadClientChatStaffCards();   // v704
+}
+
+// v704: every staff message now carries ITS sender. The portal used to label
+// every one of them with whoever holds the chat NOW -- after a transfer,
+// Daniel's messages read "Ellen". A client cannot read profiles, so
+// client_chat_staff_cards() hands over the first name, title and photo of the
+// people who have written here.
+async function loadClientChatStaffCards() {
+  const { data, error } = await sb.rpc("client_chat_staff_cards");
+  if (error) { console.error("client_chat_staff_cards failed", error); return; }
+  clientChatStaffCards = {};
+  (data || []).forEach((p) => { clientChatStaffCards[p.id] = p; });
 }
 
 // v703: only the OPEN conversation. This was every message the client had
@@ -8338,7 +8371,7 @@ async function loadClientChatMessages() {
   if (!clientChatCurrentConvId) { clientChatMessages = []; return; }
   const { data, error } = await sb
     .from("client_chat_messages")
-    .select("id, conversation_id, sender, body, created_at, edited_at, delivered_at, read_at, attachment_path, attachment_name, attachment_mime")
+    .select("id, conversation_id, sender, staff_id, body, created_at, edited_at, delivered_at, read_at, attachment_path, attachment_name, attachment_mime")
     .eq("client_id", currentClient.id)
     .eq("conversation_id", clientChatCurrentConvId)
     .order("created_at", { ascending: false })
@@ -8612,7 +8645,7 @@ async function openClientChatPastConversation(id) {
   box.innerHTML = '<div class="empty-state">Loading…</div>';
   const { data, error } = await sb
     .from("client_chat_messages")
-    .select("id, conversation_id, sender, body, created_at, edited_at, delivered_at, read_at, attachment_path, attachment_name, attachment_mime")
+    .select("id, conversation_id, sender, staff_id, body, created_at, edited_at, delivered_at, read_at, attachment_path, attachment_name, attachment_mime")
     .eq("client_id", currentClient.id)
     .eq("conversation_id", id)
     .order("created_at", { ascending: true })
@@ -8681,6 +8714,34 @@ function clientChatTicksHtml(state) {
   const title = state === "read" ? "Read" : "Delivered";
   return `<span class="chat-tick ${cls}" title="${title}">&#10003;&#10003;</span>`;
 }
+// v704 ("if he is typing, the voice message I'm playing stops"). A typing
+// ping or read receipt rebuilt the whole list with innerHTML, destroying the
+// <audio> element mid-play. An attachment that has already loaded is carried
+// across by its path -- the SAME element goes back into the new markup in the
+// same task, and a media element back in the document by then never pauses.
+function chatSwapHtml(box, html) {
+  const keep = new Map();
+  box.querySelectorAll('.chat-msg-attachment[data-resolved="1"]').forEach((el) => {
+    if (!keep.has(el.dataset.attachmentPath)) keep.set(el.dataset.attachmentPath, el);
+  });
+  box.innerHTML = html;
+  if (!keep.size) return;
+  box.querySelectorAll(".chat-msg-attachment[data-attachment-path]").forEach((el) => {
+    const old = keep.get(el.dataset.attachmentPath);
+    if (old) { el.replaceWith(old); keep.delete(el.dataset.attachmentPath); }
+  });
+}
+const CLIENT_CHAT_BOT_FACE = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none"><circle cx="12" cy="12" r="9" fill="#434C60"/><rect x="5.4" y="6.8" width="13.2" height="10.2" rx="4.2" fill="#5A3A14" stroke="#E2B774" stroke-width="0.9"/><path d="M8 11.2 Q9.2 9.8 10.4 11.2 M13.6 11.2 Q14.8 9.8 16 11.2" stroke="#FFD38A" stroke-width="1.1" stroke-linecap="round"/><path d="M10.1 13.1 Q12 15.4 13.9 13.1 Z" fill="#FFD38A"/></svg>';
+// v704: the photo beside an incoming message -- the staff member's own, their
+// initial if they have none, Remi's face for Remi.
+function clientChatAvatarHtml(role, card, name) {
+  let inner;
+  if (role === "ai") inner = CLIENT_CHAT_BOT_FACE;
+  else if (card && card.avatar_url) inner = '<img src="' + escapeHtml(card.avatar_url) + '" alt="">';
+  else inner = "<span>" + escapeHtml(String(name || "?").trim().charAt(0).toUpperCase()) + "</span>";
+  return '<div class="chat-msg-av' + (role === "ai" ? " bot" : "") + '">' + inner + "</div>";
+}
+
 function renderClientChatMessages() {
   const box = document.getElementById("chatMessages");
   const wasAtBottom = chatAtBottom(box); // v632: read BEFORE innerHTML is replaced
@@ -8711,9 +8772,10 @@ function renderClientChatMessages() {
   }
 
   let prevSender = null; // v631: drives the sequential-collapse check below
-  box.innerHTML =
+  chatSwapHtml(box,
     visibleMessages
       .map((m) => {
+        if (m.sender === "system") { prevSender = null; return '<div class="chat-system-note">' + escapeHtml(m.body || "") + "</div>"; }   // v704
         const mine = m.sender === "client";
         // v631: the name moved above the bubble into chatMsgHeadHtml(), so
         // the meta line below keeps only the timestamp, edit control and
@@ -8721,16 +8783,24 @@ function renderClientChatMessages() {
         // from the three template slots that still interpolate it.
         const label = "";
         const role = m.sender === "ai" ? "ai" : m.sender === "staff" ? "staff" : "client";
-        // v703: the person's first name when we know it, not only the team.
+        // v704: THIS message's sender (clientChatStaffCards by staff_id). v703
+        // used the current assignee for every staff message, which relabelled
+        // Daniel's messages "Ellen" after a transfer. The fallbacks are only
+        // for a card that has not loaded yet.
+        const card = m.sender === "staff" && m.staff_id ? clientChatStaffCards[m.staff_id] : null;
         const senderName = m.sender === "ai"
           ? "Remi"
-          : (clientChatView === "past"
-              ? (clientChatPastConv && clientChatPastConv.staff_name) || "PropTech AI"
-              : (clientChatThread && (clientChatThread.agent_name || clientChatThread.assigned_staff_name)) || "PropTech AI");
+          : (card && card.name)
+            || (clientChatView === "past"
+                  ? (clientChatPastConv && clientChatPastConv.staff_name)
+                  : (clientChatThread && (clientChatThread.agent_name || clientChatThread.assigned_staff_name)))
+            || "PropTech AI";
         const atMs = new Date(m.created_at).getTime();
-        const isSeq = chatIsSequential(prevSender, m.sender, atMs);
-        prevSender = { key: m.sender, at: atMs };
-        const headHtml = (!mine && !isSeq) ? chatMsgHeadHtml(senderName, role) : "";
+        // Two different staff members in a row are two blocks, not one.
+        const senderKey = m.sender + ":" + (m.staff_id || "");
+        const isSeq = chatIsSequential(prevSender, senderKey, atMs);
+        prevSender = { key: senderKey, at: atMs };
+        const headHtml = (!mine && !isSeq) ? chatMsgHeadHtml(senderName, role, card && card.title) : "";
         const time = new Date(m.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
         if (clientChatEditingMessageId === m.id) {
           return `
@@ -8758,14 +8828,15 @@ function renderClientChatMessages() {
           : "";
         const ticksHtml = mine ? clientChatTicksHtml(clientChatTickState(m)) : "";
         return `
-          <div class="chat-msg-row ${mine ? "mine" : "theirs"} from-${role}${isSeq ? " seq" : ""}">
+          <div class="chat-msg-row ${mine ? "mine" : "theirs with-av"} from-${role}${isSeq ? " seq" : ""}">
+            ${(!mine && !isSeq) ? clientChatAvatarHtml(role, card, senderName) : ""}
             ${headHtml}
             ${bodyHtml}
             ${attachmentHtml}
             <div class="chat-msg-meta">${label}${time}${editedLabel}${editBtnHtml}${ticksHtml ? " " + ticksHtml : ""}</div>
           </div>`;
       })
-      .join("") + (clientChatView !== "past" && clientPeerTypingUntil && clientPeerTypingUntil > Date.now() ? clientChatTypingBubbleHtml() : "");
+      .join("") + (clientChatView !== "past" && clientPeerTypingUntil && clientPeerTypingUntil > Date.now() ? clientChatTypingBubbleHtml() : ""));
   if (wasAtBottom) chatPinToBottom(box); // v632
   Promise.resolve(resolveVisibleClientChatAttachments(box))
     .then(() => chatKeepPinned(box, wasAtBottom));
@@ -8781,8 +8852,10 @@ function renderClientChatMessages() {
 // 'ai' (Remi). The badge is what stops a client mistaking an assistant
 // reply for a human one -- which matters more here than it does on the
 // staff side.
-function chatMsgHeadHtml(name, role) {
-  const label = role === 'ai' ? 'Assistant' : role === 'client' ? 'Client' : 'Staff';
+function chatMsgHeadHtml(name, role, detail) {
+  // v704: a staff member's badge carries their title ("Quality Lead") when
+  // we know it, as the owner's reference does; "Staff" otherwise.
+  const label = role === 'ai' ? 'Assistant' : role === 'client' ? 'Client' : (detail || 'Staff');
   return '<div class="chat-msg-head">'
     + '<span class="chat-msg-head-name">' + escapeHtml(name || 'Unknown') + '</span>'
     + '<span class="chat-role-badge ' + role + '">' + label + '</span>'
@@ -8916,13 +8989,14 @@ function chatKeepPinned(box, wasAtBottom) {
 }
 
 async function resolveVisibleClientChatAttachments(container) {
-  const els = Array.from((container || document.getElementById("chatMessages")).querySelectorAll(".chat-msg-attachment"));
+  const els = Array.from((container || document.getElementById("chatMessages")).querySelectorAll('.chat-msg-attachment:not([data-resolved="1"])'));   // v704
   for (const el of els) {
     const path = el.dataset.attachmentPath;
     const mime = el.dataset.attachmentMime || "";
     const name = el.dataset.attachmentName || "file";
     const url = await resolveClientChatAttachmentUrl(path);
     if (!url) { el.textContent = "Attachment unavailable"; continue; }
+    el.dataset.resolved = "1";   // v704: chatSwapHtml carries it across re-renders
     if (mime.startsWith("image/")) {
       el.innerHTML = `<img src="${url}" alt="${escapeHtml(name)}">`;
       el.querySelector("img").addEventListener("click", () => window.open(url, "_blank"));
@@ -9603,6 +9677,11 @@ function subscribeClientChatRealtime() {
           loadClientChatConversations().then(() => { renderClientChatHome(); renderClientChatHeader(); });
         }
         clientChatMessages.push(m);
+        // v704: a staff member this tab has no card for yet (a transfer, a
+        // colleague joining) -- fetch names and photos, then redraw.
+        if (m.sender === "staff" && m.staff_id && !clientChatStaffCards[m.staff_id]) {
+          loadClientChatStaffCards().then(() => renderClientChatMessages());
+        }
         // v314: a staff message reaching this already-connected browser
         // counts as "delivered" — fire-and-forget. If the conversation is
         // on screen, it's also "read" straight away. (v703: the home screen
