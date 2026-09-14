@@ -1800,6 +1800,15 @@
   }
   #relaunchTourBtn:hover{ background:color-mix(in srgb, var(--teal) 18%, transparent) !important; box-shadow:none !important; }
 
+  /* v694: the greeting sits UNDER the icon buttons, right-aligned --
+     Welcome, then the company (if any), then the last login (if any). It is
+     still the first child of .who-controls in the markup; order + a full
+     flex-basis drop it onto its own row, so no handler or id moved. */
+  .who-controls{ flex-wrap:wrap; justify-content:flex-end; row-gap:8px; }
+  #clientGreeting{ order:99; flex-basis:100%; text-align:right !important; }
+  #clientGreetingCompany:empty, #clientGreetingLastLogin:empty{ display:none; }
+  #clientGreetingLastLogin{ font-family:var(--mono); font-size:10.5px; color:var(--text-2); margin-top:2px; }
+
 </style>
 
 </head>
@@ -2078,9 +2087,10 @@
       </div>
       <div class="who" data-comment-anchor="d238810b56-div">
       <div class="who-controls" data-comment-anchor="f1c3250557-div">
-        <div id="clientGreeting" style="text-align:left; font-family:var(--sans); line-height:1.35;">
+        <div id="clientGreeting" style="text-align:right; font-family:var(--sans); line-height:1.35;">
           <div id="clientGreetingName" style="font-weight:700; font-size:13px;" data-comment-anchor="59b8ab6f04-div"></div>
           <div id="clientGreetingCompany" style="font-size:11px;" data-comment-anchor="ec6b982b00-div"></div>
+          <div id="clientGreetingLastLogin"></div>
         </div>
         <button id="tweaksFab" class="notif-bell-btn" title="Tweaks" style="animation:none;" data-comment-anchor="21c6bb22a8-button">
           <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="2.6"></circle><path d="M10 2.5v2.2M10 15.3v2.2M17.5 10h-2.2M4.7 10H2.5M15.1 4.9l-1.5 1.5M6.4 13.6l-1.5 1.5M15.1 15.1l-1.5-1.5M6.4 6.4L4.9 4.9" stroke-linecap="round" data-comment-anchor="b6d03a0869-path"></path></svg>
@@ -3615,12 +3625,17 @@ function updateTopbarBreadcrumb() {
 
 function showApp() {
   document.getElementById("app").style.display = "flex";
-  // v117: "Last login" line removed from the greeting per request — still
-  // reading/stamping previousLoginAt/last_login_at above (kept in case it's
-  // needed again later), just not rendered anywhere now.
   const firstName = (currentClient.full_name || currentClient.email || "").trim().split(/\s+/)[0] || "there";
   document.getElementById("clientGreetingName").textContent = `Welcome, ${firstName}!`;
   document.getElementById("clientGreetingCompany").textContent = currentClient.company_name || "";
+  // v694: "Last login" is back (v117 had hidden it), under the company name,
+  // per the owner. previousLoginAt is the PRIOR sign-in -- see the v90/v104b
+  // note where it is read -- so a first-ever sign-in shows no line at all
+  // rather than "just now".
+  document.getElementById("clientGreetingLastLogin").textContent = previousLoginAt
+    ? "Last login: " + new Date(previousLoginAt).toLocaleString("en-US",
+        { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "";
   updateTopbarBreadcrumb();
   renderClientProfileMenu();   // v693
   // v161: warm time-of-day hero greeting atop the Dashboard tab (premium
