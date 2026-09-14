@@ -1053,6 +1053,9 @@
     animation:callBannerIn .2s cubic-bezier(0.16,1,0.3,1);
   }
   .call-banner.show{ display:flex; }
+  /* v709: calls above every other layer (the portal's own dialogs are 400). */
+  body .call-banner, body .call-bar{ z-index:10000; }
+  body .call-video-panel{ z-index:9990; }
   @keyframes callBannerIn{
     from{ opacity:0; transform:translateX(-50%) translateY(-24px); }
     to{ opacity:1; transform:translateX(-50%); }
@@ -9793,8 +9796,31 @@ const clientRangCallIds = new Set();   // v700: calls that already rang here
 function initClientCallSignaling() {
   if (clientCallMyChannel) return;
   clientCallMyChannel = sb.channel("call-signal-" + currentClient.id);
-  clientCallMyChannel.on("broadcast", { event: "signal" }, ({ payload }) => handleClientCallSignal(payload)).subscribe();
+  // v709: every incoming call arrives here; a failed join used to leave it
+  // dead until a reload. Retried with backoff, as on the staff side.
+  clientCallMyChannel.on("broadcast", { event: "signal" }, ({ payload }) => handleClientCallSignal(payload)).subscribe((status) => {
+    if (status === "SUBSCRIBED") clientCallSignalDelay = 2000;
+    else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") clientCallSignalRetry();
+  });
 }
+var clientCallSignalTimer = null;
+var clientCallSignalDelay = 2000;
+function clientCallSignalRetry() {
+  if (clientCallSignalTimer || !clientCallMyChannel) return;
+  const delay = clientCallSignalDelay;
+  clientCallSignalDelay = Math.min(clientCallSignalDelay * 2, 60000);
+  clientCallSignalTimer = setTimeout(() => {
+    clientCallSignalTimer = null;
+    if (!clientCallMyChannel) return;
+    const old = clientCallMyChannel;
+    clientCallMyChannel = null;
+    try { sb.removeChannel(old); } catch (e) { /* already gone */ }
+    initClientCallSignaling();
+  }, delay);
+}
+function clientCallSignalCheck() { if (clientCallMyChannel && clientCallMyChannel.state !== "joined") clientCallSignalRetry(); }
+window.addEventListener("online", clientCallSignalCheck);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") clientCallSignalCheck(); });
 
 // Sends one signaling message to `toId` without needing an already-open
 // outbound channel -- opens one just long enough to send, same pattern as
@@ -10027,10 +10053,13 @@ const CLIENT_REJOIN_WINDOW_MS = 60000;
 const CLIENT_SAVED_CALL_KEY = "pt.clientActiveCall";
 function clientCallSaveForRejoin() {
   const st = callState;
-  if (!st || st.status !== "answered" || !st.callRowId || !st.peerId) return;
+  // v709: a call this client placed that is still ringing is kept too.
+  const ringingOut = !!st && st.status === "ringing" && st.role === "caller";
+  if (!st || (st.status !== "answered" && !ringingOut) || !st.callRowId || !st.peerId) return;
   try {
     sessionStorage.setItem(CLIENT_SAVED_CALL_KEY, JSON.stringify({
-      callRowId: st.callRowId, peerId: st.peerId, peerName: st.peerName, role: st.role, savedAt: Date.now(),
+      callRowId: st.callRowId, peerId: st.peerId, peerName: st.peerName, role: st.role,
+      status: st.status, ringStartedAt: st.ringStartedAt || null, savedAt: Date.now(),
     }));
   } catch (e) { /* private mode: no rejoin after a refresh */ }
 }
@@ -10180,11 +10209,45 @@ async function clientCallRestoreFromSaved(saved) {
 async function clientResumeSavedCall() {
   const saved = clientCallReadSaved();
   if (!saved || callState) return;
+  // v709: what happened while the page reloaded? The call record says.
+  const { data } = await sb.from("voice_calls").select("status").eq("id", saved.callRowId).maybeSingle();
+  const rowStatus = data ? data.status : null;
+  if (saved.status === "ringing") {
+    if (rowStatus === "ringing" && Date.now() - (saved.ringStartedAt || 0) < 45000) { clientResumeRinging(saved); return; }
+    if (rowStatus !== "answered") { clientCallClearSaved(); return; }
+  } else if (rowStatus && rowStatus !== "answered") { clientCallClearSaved(); return; }
   const state = await clientCallEnsureRestored(saved);
   if (!state || state.callRowId !== saved.callRowId) return;
-  const { data } = await sb.from("voice_calls").select("status").eq("id", saved.callRowId).maybeSingle();
-  if (data && data.status !== "answered") { if (callState === state) endClientVoiceCall(null, false); return; }
   if (callState === state && !state.answeredRejoinId && !state.rejoinId && !state.remoteDescSet) clientCallSendRejoin(state);
+}
+// v709: back to ringing after a refresh -- a fresh offer sent as a tagged
+// 'offer-retry' with `replace`, which staff swap in without ringing twice.
+async function clientResumeRinging(saved) {
+  let localStream;
+  try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { clientCallClearSaved(); return; }
+  if (callState) { localStream.getTracks().forEach((t) => t.stop()); return; }
+  const outboundChannel = sb.channel("call-signal-" + saved.peerId);
+  await callChannelReady(outboundChannel);
+  if (callState) { localStream.getTracks().forEach((t) => t.stop()); sb.removeChannel(outboundChannel); return; }
+  const tag = clientCallGenId();
+  const state = callState = { role: "caller", peerId: saved.peerId, peerName: saved.peerName, pc: null, localStream, outboundChannel, callRowId: saved.callRowId, status: "ringing", remoteDescSet: false, pendingCandidates: [], videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false, ringStartedAt: saved.ringStartedAt || Date.now(), pcTag: tag, restored: true };
+  const pc = await clientCallBuildPc(state, tag);
+  if (callState !== state) { pc.close(); return; }
+  state.pc = pc;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  const payload = { type: "offer-retry", sdp: offer, callRowId: state.callRowId, replace: true, tag };
+  callSend(outboundChannel, payload);
+  state.offerRetry = setInterval(() => {
+    if (callState !== state || state.status !== "ringing") { clearInterval(state.offerRetry); return; }
+    callSend(outboundChannel, payload);
+  }, 4000);
+  showCallBar(state.peerName, "Calling\u2026", false);
+  clientCallStartRingtone("ringback");
+  const left = Math.max(5000, 45000 - (Date.now() - state.ringStartedAt));
+  state.ringTimeout = setTimeout(() => { if (callState === state && state.status === "ringing") endClientVoiceCall("missed", true); }, left);
+  clientCallMarkLive(state);
 }
 async function clientHandleRejoinRequest(msg) {
   let state = callState;
@@ -10249,7 +10312,7 @@ async function startClientVoiceCall() {
   pc.ontrack = (e) => {
     document.getElementById(e.track.kind === "video" ? "remoteCallVideo" : "remoteCallAudio").srcObject = e.streams[0];
   };
-  pc.onicecandidate = (e) => { if (e.candidate) callSend(outboundChannel, { type: "ice-candidate", candidate: e.candidate }); };
+  pc.onicecandidate = (e) => { if (e.candidate) callSend(outboundChannel, { type: "ice-candidate", candidate: e.candidate, tag: (callState && callState.pcTag) || undefined }); };   // v709
   pc.onconnectionstatechange = () => clientCallOnPcState(pc);   // v707: reconnects instead of ending
 
   // portal_audit_chunk3.md #6: error was never checked -- on an insert
@@ -10286,6 +10349,8 @@ async function startClientVoiceCall() {
     }, 4000);
   }
 
+  callState.ringStartedAt = Date.now();
+  clientCallMarkLive(callState);   // v709: a refresh keeps this ringing
   showCallBar(calleeName, "Calling\u2026", false);
   clientCallStartRingtone("ringback");
   callState.ringTimeout = setTimeout(() => { if (callState && callState.status === "ringing") endClientVoiceCall("missed", true); }, 45000);   // v700: 45 s, as on the staff side
@@ -10303,6 +10368,17 @@ async function handleClientCallSignal(msg) {
   // reaches a client whose connection blinked, or who opened the portal
   // from the phone notification after the first offer went out.
   if (msg.type === "offer-retry") {
+    // v709: staff refreshed while this rang and sent a NEW offer for the same
+    // call: swap it in and keep ringing.
+    if (msg.replace && callState && callState.role === "callee" && callState.callRowId === msg.callRowId) {
+      if (callState.status === "ringing" && !callState.pc && callState.offerTag !== msg.tag) {
+        callState.offerSdp = msg.sdp;
+        callState.offerTag = msg.tag;
+        callState.pcTag = msg.tag;
+        callState.pendingCandidates = (callState.candidateStash && callState.candidateStash[msg.tag]) || [];
+      }
+      return;
+    }
     if (callState || !msg.callRowId || clientRangCallIds.has(msg.callRowId)) return;
     msg = { ...msg, type: "offer" };
   }
@@ -10310,6 +10386,7 @@ async function handleClientCallSignal(msg) {
     if (callState) { clientCallSendOneOff(msg.from, { type: "busy" }); return; } // already on/starting a call
     if (msg.callRowId) clientRangCallIds.add(msg.callRowId);
     callState = { role: "callee", peerId: msg.from, peerName: msg.fromName || "Staff", pc: null, localStream: null, outboundChannel: null, callRowId: msg.callRowId || null, status: "ringing", remoteDescSet: false, pendingCandidates: [], offerSdp: msg.sdp, videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false };
+    if (msg.tag) { callState.pcTag = msg.tag; callState.offerTag = msg.tag; }   // v709: a re-sent offer
     document.getElementById("incomingCallName").textContent = callState.peerName;
     document.getElementById("incomingCallBanner").classList.add("show");
     clientCallStartRingtone("incoming");
@@ -10489,7 +10566,7 @@ async function acceptClientIncomingCall() {
   pc.ontrack = (e) => {
     document.getElementById(e.track.kind === "video" ? "remoteCallVideo" : "remoteCallAudio").srcObject = e.streams[0];
   };
-  pc.onicecandidate = (e) => { if (e.candidate) callSend(outboundChannel, { type: "ice-candidate", candidate: e.candidate }); };
+  pc.onicecandidate = (e) => { if (e.candidate) callSend(outboundChannel, { type: "ice-candidate", candidate: e.candidate, tag: (callState && callState.pcTag) || undefined }); };   // v709
   pc.onconnectionstatechange = () => clientCallOnPcState(pc);   // v707: reconnects instead of ending
 
   callState.pc = pc;
