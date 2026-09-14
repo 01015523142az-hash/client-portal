@@ -1577,6 +1577,118 @@
     padding:0; font-family:var(--chat-sans, var(--sans)); font-size:12px; font-weight:600;
   }
 
+  /* =========================================================================
+     v692: THE CLIENT PORTAL'S SHELL NOW MATCHES THE STAFF PORTAL.
+
+     The owner asked for: no coloured banner behind the menu, a transparent
+     menu like the staff portal's, the dialer's typeface including the tabs,
+     and a light theme that is readable and not glaring.
+
+     - Type: Plus Jakarta Sans + JetBrains Mono, the dialer's and the staff
+       portal's stacks (this page was Roboto + IBM Plex Mono).
+     - Accent: gold, not coral -- the staff portal made the same move in
+       v623, and the menu no longer has a coral bar to match.
+     - Menu: transparent over the page, the dialer's nav treatment (13.5px
+       semibold sentence case, small uppercase group labels, the active item
+       a quiet panel with a gold left rule). It overrides the coral appbar,
+       both Tweaks header styles and the v350 light sidebar without editing
+       them, which is why it leans on !important: it has to beat three
+       earlier treatments whatever their specificity.
+     - Light theme: the same token values as the staff portal's v692 block
+       (see its note -- 57 of 172 text elements here failed contrast).
+     ========================================================================= */
+  :root{
+    --mono:'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    --sans:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --display:var(--sans); --sans-ui:var(--sans);
+    --focus:#C9A66B; --focus-dim:#3A3020;
+    --text-2:#A79E8E; --text-dim:#726B5C; --num:#F2EDE6;
+  }
+  :root[data-theme="light"]{
+    --bg:#E8E5DF; --card:#F3F1EC; --card-hover:#EAE7E0; --inset:#DFDBD3;
+    --border:#D2CCC1; --border-light:#C2BBAE;
+    --text:#1F1C17; --text-2:#4B4539; --text-dim:#655E51; --num:#1F1C17;
+    --focus:#7A5C22; --focus-dim:#EEE4D0;
+    --gold:#7A5C22; --gold-soft:#94722F; --gold-dim:#EEE4D0;
+    --away:#9A5205; --away-dim:#F1E0C8;
+    --danger:#AE2025; --danger-dim:#F1D5D3; --success:#16713F; --success-dim:#D3EAD9;
+    --info:#1A64A8; --info-dim:#D6E4F2; --violet:#5E37C7; --violet-dim:#E3DCF5;
+    --teal:#0B6F66; --teal-dim:#D2ECE8;
+    --blob-1:transparent; --blob-2:transparent; --blob-3:transparent;
+  }
+
+  /* ---- menu: transparent, no banner ---- */
+  html header.appbar, html[data-tweak-appbar] header.appbar, html[data-theme="light"] header.appbar{
+    background:transparent !important; color:var(--text) !important;
+    backdrop-filter:none !important; -webkit-backdrop-filter:none !important;
+    box-shadow:none !important; border:none !important; border-radius:0 !important;
+    border-right:1px solid var(--border) !important;
+  }
+  @media (max-width:700px){
+    html header.appbar, html[data-tweak-appbar] header.appbar, html[data-theme="light"] header.appbar{
+      border-right:none !important; border-bottom:1px solid var(--border) !important;
+    }
+    .leads-side-subnav{ border-top-color:var(--border-light) !important; }
+  }
+  .brand-sub, .brand-sub.gradient-text, .brand-slogan, .brand-slogan.gradient-text{
+    background:none !important; -webkit-text-fill-color:currentColor !important; animation:none !important;
+  }
+  .brand-sub, .brand-sub.gradient-text{
+    color:var(--gold) !important; font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:2px;
+  }
+  .brand-slogan, .brand-slogan.gradient-text{
+    color:var(--text-2) !important; font-family:var(--sans); font-style:normal; font-weight:500;
+  }
+  .nav-section-label, :root[data-theme="light"] .nav-section-label{
+    font-family:var(--sans); font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--text-dim) !important; padding:12px 12px 6px; margin:0;
+  }
+  nav.tabs{ gap:2px; }
+  /* Plain `nav.tabs button`, NOT also the :root[data-theme=light] form: that
+     form outranks `nav.tabs button.active` below, and the active item lost
+     its highlight in light mode. !important alone already beats the old
+     (unimportant) v350 light rules. */
+  nav.tabs button{
+    font-family:var(--sans); font-size:13.5px; font-weight:600; letter-spacing:0; gap:10px;
+    padding:9px 12px; border-radius:10px;
+    color:var(--text-dim) !important; background:transparent !important; box-shadow:none !important;
+  }
+  nav.tabs button:hover:not(.active){ color:var(--text-2) !important; background:var(--card-hover) !important; }
+  nav.tabs button.active{
+    color:var(--text) !important; background:var(--card-hover) !important;
+    box-shadow:inset 3px 0 0 var(--gold) !important; font-weight:600;
+  }
+  nav.tabs button.active::after{ display:none !important; }
+  nav.tabs button.leads-side-subtab-btn{ font-size:12.5px; font-weight:500; padding:7px 10px; }
+  nav.tabs button.leads-side-subtab-btn.active{
+    color:var(--text) !important; background:var(--card-hover) !important; box-shadow:none !important; font-weight:600;
+  }
+  .leads-side-subnav{ border-left-color:var(--border-light) !important; }
+
+  /* ---- top bar: on the page, like the staff portal's header ---- */
+  .app-topbar, .app-topbar.scrolled{
+    background:transparent !important; box-shadow:none !important; border-radius:0;
+    border-bottom:1px solid var(--border);
+  }
+
+  /* ---- gold accent: text on it ---- */
+  .btn-primary{ box-shadow:0 8px 22px -10px rgba(201,166,107,.45); }
+  .btn-primary:hover:not(:disabled){ box-shadow:0 10px 26px -8px rgba(201,166,107,.55); }
+  :root:not([data-theme="light"]) .rec-link:hover,
+  :root:not([data-theme="light"]) .tweaks-seg button.active,
+  :root:not([data-theme="light"]) .call-bar-btn.screenshare.active{ color:#1A1206; }
+  :root[data-theme="light"] .btn-primary{ color:#FFFFFF; }
+
+  /* ---- calmer ground: no pulsing glow, no pastel blobs in light ---- */
+  #loginScreen::before, .app::before{ animation:none !important; }
+  :root[data-theme="light"] #loginScreen::before,
+  :root[data-theme="light"] .app::before{ background:none; }
+
+  /* v692 comfort: a keyboard user can always see where they are, and
+     selected text is gold rather than the browser's blue. */
+  :focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
+  ::selection{ background:var(--focus-dim); color:var(--text); }
+
 </style>
 
 </head>
