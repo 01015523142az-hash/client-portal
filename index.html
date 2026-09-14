@@ -8070,6 +8070,14 @@ async function initClientChatWidget() {
   subscribeClientChatRealtime();
   initClientCallSignaling();
   initClientChatTypingSignaling();
+  // v697: the first click or key after sign-in asks for notification
+  // permission (so a call can alert a background tab) and unlocks audio (a
+  // browser keeps an AudioContext silent until the page gets a gesture, so
+  // the ringtone of a call arriving before any click never played).
+  ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => {
+    clientChatEnsureNotificationPermission();
+    clientCallPrimeAudioContext();
+  }, { once: true }));
 }
 
 async function loadClientChatRoutes() {
@@ -9271,6 +9279,51 @@ function clientChatTypingBubbleHtml() {
   return '<div class="chat-msg-row theirs chat-typing-row"><div class="chat-msg-bubble chat-typing-dots"><span></span><span></span><span></span></div></div>';
 }
 
+// v697: the same TURN relay the staff portal uses. cloudflare-turn-credentials
+// accepts any signed-in user and this origin. With public STUN alone, two
+// browsers behind strict NATs (offices, mobile carriers) cannot reach each
+// other, so a call could be ANSWERED and still never carry audio. Fetched
+// per call (the credentials are short-lived); STUN stays as the fallback.
+const CLIENT_STUN = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }];
+async function clientIceServers() {
+  try {
+    const { data, error } = await sb.functions.invoke("cloudflare-turn-credentials", { body: {} });
+    if (!error && data && Array.isArray(data.iceServers) && data.iceServers.length) return data.iceServers.concat(CLIENT_STUN);
+  } catch (e) { console.warn("[call] TURN credentials unavailable, using STUN only", e); }
+  return CLIENT_STUN;
+}
+
+// v697: an incoming call has to be NOTICED with the portal in a background
+// tab: a desktop notification (once permission is granted) and a flashing
+// tab title, both cleared the moment the call is answered, declined or ends.
+let clientCallAlert = null;
+let clientCallTitleTimer = null;
+let clientCallTitleOrig = null;
+function clientCallAlertStart(name) {
+  clientCallAlertStop();
+  clientCallTitleOrig = document.title;
+  let on = false;
+  clientCallTitleTimer = setInterval(() => {
+    on = !on;
+    document.title = on ? `📞 Incoming call — ${name}` : clientCallTitleOrig;
+  }, 1000);
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      const iconLink = document.querySelector('link[rel="icon"]');
+      clientCallAlert = new Notification(`Incoming call from ${name}`, {
+        body: "Click to answer in the client portal.", tag: "client-call", requireInteraction: true,
+        icon: iconLink ? iconLink.href : undefined,
+      });
+      clientCallAlert.onclick = () => { window.focus(); if (clientCallAlert) clientCallAlert.close(); };
+    } catch (e) { clientCallAlert = null; }
+  }
+}
+function clientCallAlertStop() {
+  if (clientCallTitleTimer) { clearInterval(clientCallTitleTimer); clientCallTitleTimer = null; }
+  if (clientCallTitleOrig !== null) { document.title = clientCallTitleOrig; clientCallTitleOrig = null; }
+  if (clientCallAlert) { try { clientCallAlert.close(); } catch (e) {} clientCallAlert = null; }
+}
+
 function callChannelReady(channel) {
   return new Promise((resolve) => { channel.subscribe((status) => { if (status === "SUBSCRIBED") resolve(); }); });
 }
@@ -9294,7 +9347,7 @@ async function startClientVoiceCall() {
   const outboundChannel = sb.channel("call-signal-" + calleeId);
   await callChannelReady(outboundChannel);
 
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] });
+  const pc = new RTCPeerConnection({ iceServers: await clientIceServers() });
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
   // v193: every call starts audio-only — a video track only ever shows up
   // here if staff shares their screen mid-call, so route by track kind
@@ -9313,6 +9366,17 @@ async function startClientVoiceCall() {
   // nothing) and the call never shows up in history for either side.
   const { data: callRow, error: callRowErr } = await sb.from("voice_calls").insert({ caller_client_id: currentClient.id, callee_id: calleeId }).select().single();
   if (callRowErr) console.error("Failed to create voice_calls row (call will proceed without a history record)", callRowErr);
+
+  // v697: ring the staff member even when their portal tab is closed. This
+  // path never pushed at all -- staff only heard a client's call with the
+  // staff portal open. send-push-notification lets a client notify their
+  // OWN assigned staff member and nobody else.
+  sb.functions.invoke("send-push-notification", { body: {
+    user_id: calleeId,
+    title: `Incoming call from ${currentClient.full_name || currentClient.company_name || "a client"} (client)`,
+    body: "Open the staff portal to answer.",
+    tag: `call-${callRow ? callRow.id : calleeId}`, url: "/", require_interaction: true,
+  } }).then(({ error }) => { if (error) console.warn("call push to staff failed", error); }).catch(() => {});
 
   callState = { peerId: calleeId, peerName: calleeName, pc, localStream, outboundChannel, callRowId: callRow ? callRow.id : null, status: "ringing", remoteDescSet: false, pendingCandidates: [], videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false };
 
@@ -9337,6 +9401,7 @@ async function handleClientCallSignal(msg) {
     document.getElementById("incomingCallName").textContent = callState.peerName;
     document.getElementById("incomingCallBanner").classList.add("show");
     clientCallStartRingtone("incoming");
+    clientCallAlertStart(callState.peerName);   // v697
     return;
   }
   if (!callState) return;
@@ -9471,6 +9536,7 @@ function toggleClientCallMute() {
 async function acceptClientIncomingCall() {
   if (!callState || callState.pc) return; // pc already set means this isn't a still-ringing inbound offer
   clientCallStopRingtone();
+  clientCallAlertStop();   // v697
   document.getElementById("incomingCallBanner").classList.remove("show");
   let localStream;
   try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
@@ -9479,7 +9545,7 @@ async function acceptClientIncomingCall() {
   const outboundChannel = sb.channel("call-signal-" + callState.peerId);
   await callChannelReady(outboundChannel);
 
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] });
+  const pc = new RTCPeerConnection({ iceServers: await clientIceServers() });
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
   pc.ontrack = (e) => {
     document.getElementById(e.track.kind === "video" ? "remoteCallVideo" : "remoteCallAudio").srcObject = e.streams[0];
@@ -9509,6 +9575,7 @@ async function acceptClientIncomingCall() {
 function declineClientIncomingCall() {
   if (!callState) return;
   clientCallStopRingtone();
+  clientCallAlertStop();   // v697
   document.getElementById("incomingCallBanner").classList.remove("show");
   clientCallSendOneOff(callState.peerId, { type: "decline" });
   if (callState.callRowId) sb.from("voice_calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", callState.callRowId).then(() => {});
@@ -9520,6 +9587,7 @@ function endClientVoiceCall(finalStatus, notifyPeer) {
   const state = callState;
   clearTimeout(state.ringTimeout);
   clientCallStopRingtone();
+  clientCallAlertStop();   // v697
   document.getElementById("incomingCallBanner").classList.remove("show");
   if (state.pc) state.pc.close();
   if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
