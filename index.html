@@ -3835,6 +3835,38 @@ function updateTopbarBreadcrumb() {
   if (divider) divider.classList.remove("hidden");
 }
 
+// v714 (the owner: a refresh should bring you back to the page you were on,
+// not Dashboard). The open tab and its sub-tab are written to this browser
+// tab's sessionStorage as the page unloads -- so a refresh, not a new tab --
+// and showApp() reopens them through navigateToClientTab(), the same real
+// nav-button click the tour and notifications use, so whatever that tab loads
+// still loads. A tab this account cannot see (applyAccountTypeNavGating:
+// Reports unless enabled, Leads/Tickets/Dashboard for skip-trace-only) is
+// skipped and the normal landing stands.
+const CLIENT_PAGE_KEY = "pt.clientPage";
+function saveClientPage() {
+  if (!currentClient || !currentClient.id) return;
+  const btn = document.querySelector("nav.tabs button[data-tab].active");
+  if (!btn) return;
+  const tab = btn.dataset.tab;
+  const subBtn = document.querySelector(`button[data-${tab}-subtab].active`);
+  const state = { cid: currentClient.id, tab, sub: subBtn ? subBtn.getAttribute(`data-${tab}-subtab`) : null };
+  try { sessionStorage.setItem(CLIENT_PAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+window.addEventListener("pagehide", saveClientPage);
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveClientPage(); });
+function restoreClientPage() {
+  let st = null;
+  try { st = JSON.parse(sessionStorage.getItem(CLIENT_PAGE_KEY) || "null"); } catch (e) {}
+  if (!st || !st.tab || !currentClient || st.cid !== currentClient.id) return;
+  const btn = document.querySelector(`nav.tabs button[data-tab="${st.tab}"]`);
+  if (!btn) return;
+  for (let el = btn; el && el !== document.body; el = el.parentElement) {
+    if (el.style && el.style.display === "none") return;   // hidden for this account
+  }
+  navigateToClientTab(st.tab, st.sub);
+}
+
 function showApp() {
   document.getElementById("app").style.display = "flex";
   const firstName = (currentClient.full_name || currentClient.email || "").trim().split(/\s+/)[0] || "there";
@@ -3960,6 +3992,7 @@ function showApp() {
     document.getElementById("tab-dashboard").classList.add("hidden");
     document.getElementById("tab-skiptrace").classList.remove("hidden");
   }
+  restoreClientPage();   // v714: a refresh reopens the page this tab was on
 
   loadData();
   loadSkiptraceAccount();
