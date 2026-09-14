@@ -1036,35 +1036,121 @@
      .call-banner below (Accept/Decline) is that missing half; .call-bar
      is unchanged and still covers the in-progress-call bar for both
      directions once a call connects. */
+  /* v699: the staff portal's incoming-call card (its v627/v634 design), so
+     a call looks the same on both sides: top-centre, 2px gold border, 16px
+     radius, blur, a 48px handset tile with a ping ring, the caller's name
+     under a small gold label, and round decline/answer buttons. Accept is
+     GREEN and decline red, as on the staff side -- semantic colours; accept
+     used to be gold here, the same colour as every other button. */
   .call-banner{
     position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:401;
-    background:var(--card); border:1px solid var(--focus); border-radius:14px;
-    box-shadow:0 12px 40px rgba(0,0,0,0.45); padding:16px 20px; min-width:280px;
+    width:min(384px, calc(100vw - 32px)); min-width:0;
+    border:2px solid var(--chat-accent-2); border-radius:16px;
+    background:color-mix(in srgb, var(--card) 95%, transparent);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    box-shadow:0 24px 50px -12px rgba(0,0,0,.7); padding:16px 20px;
     display:none; align-items:center; gap:14px; font-family:var(--sans);
+    animation:callBannerIn .2s cubic-bezier(0.16,1,0.3,1);
   }
   .call-banner.show{ display:flex; }
+  @keyframes callBannerIn{
+    from{ opacity:0; transform:translateX(-50%) translateY(-24px); }
+    to{ opacity:1; transform:translateX(-50%); }
+  }
   .call-banner-pulse{
-    width:14px; height:14px; border-radius:50%; background:var(--focus); flex-shrink:0;
-    animation:call-pulse 1.2s ease-in-out infinite;
+    position:relative; width:48px; height:48px; border-radius:50%; flex-shrink:0;
+    background:rgba(201,166,107,.18); color:var(--chat-accent-2);
+    display:flex; align-items:center; justify-content:center;
   }
-  @keyframes call-pulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:0.4; transform:scale(1.3); } }
-  .call-banner-info{ flex:1; }
-  .call-banner-name{ font-size:14px; font-weight:700; color:var(--text); }
-  .call-banner-sub{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:2px; }
+  .call-banner-pulse::before{
+    content:'\260E'; font-size:22px; line-height:1;
+    animation:callGlyphPulse 1.4s ease-in-out infinite;
+  }
+  .call-banner-pulse::after{
+    content:''; position:absolute; inset:-4px; border-radius:50%;
+    border:2px solid var(--chat-accent-2);
+    animation:callPing 1.6s cubic-bezier(0,0,0.2,1) infinite;
+    pointer-events:none;
+  }
+  @keyframes callGlyphPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.45; } }
+  @keyframes callPing{
+    0%{ transform:scale(1); opacity:.6; }
+    75%, 100%{ transform:scale(1.5); opacity:0; }
+  }
+  .call-banner-info{ flex:1; display:flex; flex-direction:column; min-width:0; }
+  .call-banner-sub{
+    order:-1; margin:0 0 2px; font-family:var(--sans); font-size:11px;
+    font-weight:600; letter-spacing:.01em; color:var(--chat-accent-2);
+  }
+  .call-banner-name{
+    font-size:14px; font-weight:700; color:var(--text);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
   .call-banner-btn{
-    width:auto; padding:8px 16px; margin:0; border-radius:20px; border:none; cursor:pointer;
-    font-family:var(--sans); font-size:12px; font-weight:700;
+    position:relative; width:40px; height:40px; padding:0; margin:0; border-radius:50%;
+    border:none; cursor:pointer; flex-shrink:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:18px; line-height:1;
+    box-shadow:0 6px 14px -4px rgba(0,0,0,.5);
   }
-  .call-banner-accept{ background:var(--focus); color:#2B0A0A; }
+  /* The word stays in the DOM (clipped, not display:none) so screen readers
+     still announce Accept / Decline; the buttons also carry a title. */
+  .call-btn-label{
+    position:absolute; width:1px; height:1px; overflow:hidden;
+    clip-path:inset(50%); white-space:nowrap;
+  }
+  .call-banner-accept::before{ content:'\260E'; }
+  .call-banner-decline::before{ content:'\2715'; font-size:16px; font-weight:700; }
+  .call-banner-accept{ background:var(--success); color:#06301A; }
   .call-banner-decline{ background:var(--danger); color:#fff; }
+  .call-banner-btn:hover{ filter:brightness(1.1); }
 
+  /* v699: the live-call bar in the staff portal's treatment too -- a pill
+     with a soft gold edge, blur, and a green live dot with a ping. While the
+     call is still ringing the dot, the edge and "Calling…" pulse amber. It
+     becomes a rounded card when a shared screen opens inside it. */
   .call-bar{
     position:fixed; left:50%; transform:translateX(-50%); top:20px; z-index:400;
-    background:var(--card); border:1px solid var(--focus); border-radius:14px;
-    box-shadow:0 12px 40px rgba(0,0,0,0.45); padding:14px 18px; min-width:260px;
-    display:none; align-items:center; gap:12px; font-family:var(--sans); flex-wrap:wrap;
+    border:1px solid rgba(201,166,107,.40); border-radius:999px;
+    background:color-mix(in srgb, var(--card) 95%, transparent);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    box-shadow:0 20px 44px -12px rgba(0,0,0,.6); padding:8px 10px 8px 16px; min-width:260px;
+    display:none; align-items:center; gap:10px; font-family:var(--sans); flex-wrap:wrap;
+    animation:callBarIn .2s cubic-bezier(0.16,1,0.3,1);
   }
   .call-bar.show{ display:flex; }
+  .call-bar:has(.call-video-panel.show){ border-radius:16px; padding:12px 14px; }
+  @keyframes callBarIn{
+    from{ opacity:0; transform:translateX(-50%) translateY(-16px); }
+    to{ opacity:1; transform:translateX(-50%); }
+  }
+  .call-bar-dot{
+    position:relative; width:9px; height:9px; border-radius:50%; flex-shrink:0;
+    background:var(--success);
+  }
+  .call-bar-dot::after{
+    content:''; position:absolute; inset:-3px; border-radius:50%;
+    border:2px solid var(--success);
+    animation:callPing 1.6s cubic-bezier(0,0,0.2,1) infinite;
+    pointer-events:none;
+  }
+  .call-bar.connecting{ border-color:color-mix(in srgb, var(--away) 55%, transparent); }
+  .call-bar.connecting .call-bar-dot{ background:var(--away); }
+  .call-bar.connecting .call-bar-dot::after{ border-color:var(--away); }
+  .call-bar.connecting .call-bar-sub{
+    color:var(--away); font-weight:600;
+    animation:callGlyphPulse 1.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .call-banner, .call-bar{ animation:none; }
+    .call-banner-pulse::before, .call-banner-pulse::after, .call-bar-dot::after,
+    .call-bar.connecting .call-bar-sub{ animation:none; }
+    .call-banner-pulse::after, .call-bar-dot::after{ opacity:.4; }
+  }
+  /* Narrow screens: pinned to the gutters rather than centred. */
+  @media (max-width:520px){
+    .call-banner{ top:12px; left:12px; right:12px; width:auto; transform:none; animation:none; }
+  }
   .call-bar-name{ font-weight:700; font-size:13px; color:var(--text); }
   .call-bar-sub{ font-size:11px; color:var(--text-dim); }
   .call-bar-btn{
@@ -2876,11 +2962,14 @@
     <div class="call-banner-name" id="incomingCallName"></div>
     <div class="call-banner-sub">Incoming call…</div>
   </div>
-  <button class="call-banner-btn call-banner-decline" id="declineCallBtn">Decline</button>
-  <button class="call-banner-btn call-banner-accept" id="acceptCallBtn">Accept</button>
+  <!-- v699: round glyph buttons, as on the staff portal. The word moves into
+       a clipped span that screen readers still read, plus a title. -->
+  <button class="call-banner-btn call-banner-decline" id="declineCallBtn" title="Decline" aria-label="Decline call"><span class="call-btn-label">Decline</span></button>
+  <button class="call-banner-btn call-banner-accept" id="acceptCallBtn" title="Accept" aria-label="Accept call"><span class="call-btn-label">Accept</span></button>
 </div>
 
 <div id="callBar" class="call-bar">
+  <div class="call-bar-dot"></div>
   <div style="flex:1;">
     <div class="call-bar-name" id="callBarName"></div>
     <div class="call-bar-sub" id="callBarSub">Calling…</div>
@@ -8077,6 +8166,12 @@ async function initClientChatWidget() {
   ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => {
     clientChatEnsureNotificationPermission();
     clientCallPrimeAudioContext();
+    // v699: the chime context too, as the staff portal does (its v687), or
+    // the first notification sound of a session is often silent.
+    try {
+      if (!clientChatAudioCtx) clientChatAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (clientChatAudioCtx.state === "suspended") clientChatAudioCtx.resume();
+    } catch (e) { /* no audio is not an error */ }
   }, { once: true }));
 }
 
@@ -8689,6 +8784,35 @@ function clientChatPlayNotificationSound() {
     glide(1760, 1975.5, 0.1, 0.18, 0.25, 0.45);
   } catch (e) { console.error("Chat notification sound failed", e); }
 }
+// v699: the staff portal's notification-centre chime
+// (staffPlayOpsNotificationSound): three ascending notes, D5 F#5 B5. It is
+// deliberately different from the chat glide above, so a client can tell
+// "something happened on my account" (a lead, a ticket reply, a bill) from
+// "a message arrived" by ear -- exactly as staff can.
+function clientPlayOpsNotificationSound() {
+  try {
+    if (!clientChatAudioCtx) clientChatAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (clientChatAudioCtx.state === "suspended") clientChatAudioCtx.resume();
+    const notes = [
+      { freq: 587.33, at: 0, dur: 0.11, vol: 0.13 },    // D5
+      { freq: 739.99, at: 0.09, dur: 0.11, vol: 0.13 }, // F#5
+      { freq: 987.77, at: 0.18, dur: 0.20, vol: 0.15 }, // B5
+    ];
+    notes.forEach((n) => {
+      const start = clientChatAudioCtx.currentTime + n.at;
+      const osc = clientChatAudioCtx.createOscillator();
+      const gain = clientChatAudioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = n.freq;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(n.vol, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + n.dur);
+      osc.connect(gain).connect(clientChatAudioCtx.destination);
+      osc.start(start);
+      osc.stop(start + n.dur + 0.02);
+    });
+  } catch (e) { console.error("Notification sound failed", e); }
+}
 
 // ---------- desktop (browser) notification ----------
 let clientChatNotificationPermissionRequested = false;
@@ -8757,7 +8881,8 @@ function addNotifCenterItem({ icon, title, body, onClick, playSound = true }) {
     // rule based on whether the chat thread itself is actively being
     // viewed, not just whether this panel is open, so it shouldn't also
     // fire a second time here).
-    if (playSound) clientChatPlayNotificationSound();
+    // v699: the staff notification-centre chime, not the chat glide.
+    if (playSound) clientPlayOpsNotificationSound();
   }
   renderNotifCenter();
 }
@@ -9185,9 +9310,8 @@ function clientCallSendOneOff(toId, payload) {
 }
 
 // ---------- ring/ringback tones (Web Audio, no audio file assets) ----------
-// Same synthesized "doo-DIT" pattern as dashboard.html's own
-// voiceStartRingtone/voicePlayTone (see that file's comment on why it's a
-// square-wave chime rather than a copyrighted ringtone sample) -- kept as
+// The staff portal's own call sounds (v699 below) -- synthesized live with
+// Web Audio, no audio files, nothing copied from any app's ringtone -- kept as
 // its own audio context/functions (not reusing clientChatAudioCtx, which
 // is the separate new-chat-message chime) so a call ringing and a chat
 // message arriving mid-call can never interfere with each other.
@@ -9219,27 +9343,91 @@ function clientCallPlaySequence(notes) {
   if (clientCallAudioCtx.state === "suspended") clientCallAudioCtx.resume().catch(() => {});
   notes.forEach((n) => clientCallPlayTone(n.freq, n.at, n.dur, n.vol, n.type));
 }
-const CLIENT_CALL_RING_NOTES = [{ freq: 830.61, at: 0, dur: 0.10, vol: 0.15, type: "square" }, { freq: 1108.73, at: 0.12, dur: 0.10, vol: 0.15, type: "square" }, { freq: 830.61, at: 0.30, dur: 0.10, vol: 0.15, type: "square" }, { freq: 1108.73, at: 0.42, dur: 0.16, vol: 0.17, type: "square" }];
-const CLIENT_CALL_RINGBACK_NOTES = [{ freq: 698.46, at: 0, dur: 0.30, vol: 0.12, type: "triangle" }, { freq: 698.46, at: 0.45, dur: 0.30, vol: 0.12, type: "triangle" }];
+// v699: the staff portal's call sounds (its v628/v630), value for value, so
+// a call rings the same on both sides. They replace the square-wave
+// "doo-DIT" ring and the triangle ringback this file used to carry.
+//   incoming -- C-major arpeggio C5 E5 G5 C6, 0.15s apart, every 2.5s; each
+//               note struck and decaying exponentially, so it carries;
+//   ringback -- 440 + 480Hz together for 1.2s every 3.5s (the North American
+//               ringback), softer, since it plays in your own ear;
+//   connect  -- two notes up the moment a call connects;
+//   hang-up  -- two notes down when a call that was live ends.
+const CLIENT_CALL_INCOMING_ARPEGGIO = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+const CLIENT_CALL_RINGBACK_PAIR = [440, 480];                            // US ringback
+const CLIENT_CALL_RING_NOTE_GAIN = 0.16;
+const CLIENT_CALL_RINGBACK_OSC_GAIN = 0.07;   // x2 oscillators -> peak ~0.14
+const CLIENT_CALL_CONNECT_NOTES = [{ freq: 659.25, at: 0, dur: 0.14, vol: 0.18 }, { freq: 987.77, at: 0.09, dur: 0.4, vol: 0.2 }];
+const CLIENT_CALL_HANGUP_NOTES = [{ freq: 659.25, at: 0, dur: 0.14, vol: 0.16 }, { freq: 440.00, at: 0.09, dur: 0.4, vol: 0.18 }];
 let clientCallRingInterval = null;
-// kind "incoming": the 3-note ascending chime, repeating every 2.4s — for
-// an offer arriving. kind "ringback": the softer 2-note pattern every 3s —
-// while this client is the one waiting for staff to pick up.
+let clientCallRingGain = null;
+function clientCallRingPlayIncoming() {
+  const ctx = clientCallAudioCtx;
+  if (!ctx || !clientCallRingGain) return;
+  CLIENT_CALL_INCOMING_ARPEGGIO.forEach((freq, idx) => {
+    const at = ctx.currentTime + idx * 0.15;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(CLIENT_CALL_RING_NOTE_GAIN, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + 0.35);
+    osc.connect(g);
+    g.connect(clientCallRingGain);
+    osc.start(at);
+    osc.stop(at + 0.4);
+  });
+}
+function clientCallRingPlayRingback() {
+  const ctx = clientCallAudioCtx;
+  if (!ctx || !clientCallRingGain) return;
+  // Each oscillator has its own gain with a short attack/release: two
+  // full-level oscillators straight to the output would clip and click.
+  const oscs = CLIENT_CALL_RINGBACK_PAIR.map((freq) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    const t0 = ctx.currentTime;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(CLIENT_CALL_RINGBACK_OSC_GAIN, t0 + 0.02);
+    g.gain.setValueAtTime(CLIENT_CALL_RINGBACK_OSC_GAIN, t0 + 1.16);
+    g.gain.linearRampToValueAtTime(0, t0 + 1.2);
+    osc.connect(g);
+    g.connect(clientCallRingGain);
+    osc.start();
+    return osc;
+  });
+  setTimeout(() => { oscs.forEach((o) => { try { o.stop(); } catch (e) {} }); }, 1200);
+}
+// kind "incoming": the arpeggio, for the person RECEIVING a call.
+// kind "ringback": the 440+480 pair, while this client waits for staff.
 function clientCallStartRingtone(kind) {
   clientCallStopRingtone();
   if (!clientCallAudioCtx) clientCallPrimeAudioContext();
   if (!clientCallAudioCtx) return;
-  const notes = kind === "incoming" ? CLIENT_CALL_RING_NOTES : CLIENT_CALL_RINGBACK_NOTES;
-  const cycleMs = kind === "incoming" ? 2400 : 3000;
+  if (clientCallAudioCtx.state === "suspended") clientCallAudioCtx.resume().catch(() => {});
+  const incoming = kind === "incoming";
+  // One gain node per ringing session; disconnecting it in
+  // clientCallStopRingtone() cuts a ringback tone mid-note on answer.
+  clientCallRingGain = clientCallAudioCtx.createGain();
+  clientCallRingGain.gain.value = 1;
+  clientCallRingGain.connect(clientCallAudioCtx.destination);
   const playCycle = () => {
-    if (!clientCallAudioCtx || clientCallAudioCtx.state === "closed") return;
-    clientCallPlaySequence(notes);
+    if (!clientCallAudioCtx || clientCallAudioCtx.state === "closed" || !clientCallRingGain) return;
+    if (incoming) clientCallRingPlayIncoming(); else clientCallRingPlayRingback();
   };
   playCycle();
-  clientCallRingInterval = setInterval(playCycle, cycleMs);
+  clientCallRingInterval = setInterval(playCycle, incoming ? 2500 : 3500);
 }
 function clientCallStopRingtone() {
   if (clientCallRingInterval) { clearInterval(clientCallRingInterval); clientCallRingInterval = null; }
+  if (clientCallRingGain) { try { clientCallRingGain.disconnect(); } catch (e) {} clientCallRingGain = null; }
+}
+function clientCallPlayConnectSound() {
+  if (!clientCallAudioCtx) clientCallPrimeAudioContext();
+  clientCallPlaySequence(CLIENT_CALL_CONNECT_NOTES);
+}
+function clientCallPlayHangupSound() {
+  if (!clientCallAudioCtx) clientCallPrimeAudioContext();
+  clientCallPlaySequence(CLIENT_CALL_HANGUP_NOTES);
 }
 
 // ---------- v316: "is typing…" indicator (Snapchat-style bubble) ----------
@@ -9414,6 +9602,7 @@ async function handleClientCallSignal(msg) {
     for (const c of queued) { try { await callState.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { console.error(e); } }
     callState.status = "answered";
     clearTimeout(callState.ringTimeout);
+    clientCallPlayConnectSound();   // v699: as on the staff side
     showCallBar(callState.peerName, "Connected", true);
     document.getElementById("callScreenShareBtn").style.display = "inline-block";
   } else if (msg.type === "ice-candidate" && msg.candidate) {
@@ -9515,6 +9704,9 @@ function updateClientScreenShareUI() {
 
 function showCallBar(name, sub, showMute) {
   document.getElementById("callBar").classList.add("show");
+  // v699: amber "still ringing" state until the call connects (mute only
+  // appears once it has), as on the staff portal's call bar.
+  document.getElementById("callBar").classList.toggle("connecting", !showMute);
   document.getElementById("callBarName").textContent = name;
   document.getElementById("callBarSub").textContent = sub;
   document.getElementById("callMuteBtn").style.display = showMute ? "inline-block" : "none";
@@ -9568,6 +9760,7 @@ async function acceptClientIncomingCall() {
   callSend(outboundChannel, { type: "answer", sdp: answer });
   if (callState.callRowId) sb.from("voice_calls").update({ status: "answered", answered_at: new Date().toISOString() }).eq("id", callState.callRowId).then(() => {});
 
+  clientCallPlayConnectSound();   // v699: as on the staff side
   showCallBar(callState.peerName, "Connected", true);
   document.getElementById("callScreenShareBtn").style.display = "inline-block";
 }
@@ -9588,6 +9781,9 @@ function endClientVoiceCall(finalStatus, notifyPeer) {
   clearTimeout(state.ringTimeout);
   clientCallStopRingtone();
   clientCallAlertStop();   // v697
+  // v699: the staff portal's hang-up cue, only for a call that was actually
+  // live -- an unanswered one just stops ringing, as a real phone does.
+  if (state.status === "answered") clientCallPlayHangupSound();
   document.getElementById("incomingCallBanner").classList.remove("show");
   if (state.pc) state.pc.close();
   if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
