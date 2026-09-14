@@ -9292,6 +9292,7 @@ function updateClientChatUnreadBadge() {
 // ---------------------------------------------------------------------------
 let callState = null; // { peerId, peerName, pc, localStream, outboundChannel, callRowId, status, remoteDescSet, pendingCandidates, ringTimeout, videoSender, screenStream, hasScreenShare, peerSharing, offerSdp (callee only, before Accept) }
 let clientCallMyChannel = null;
+const clientRangCallIds = new Set();   // v700: calls that already rang here
 
 function initClientCallSignaling() {
   if (clientCallMyChannel) return;
@@ -9571,10 +9572,19 @@ async function startClientVoiceCall() {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   callSend(outboundChannel, { type: "offer", sdp: offer, callRowId: callState.callRowId });
+  // v700: repeat the offer every 4 s while it rings, so a staff tab whose
+  // connection blinked -- or that is opened from the push -- still gets it.
+  if (callState.callRowId) {
+    const ringing = callState;
+    ringing.offerRetry = setInterval(() => {
+      if (callState !== ringing || ringing.status !== "ringing") { clearInterval(ringing.offerRetry); return; }
+      callSend(outboundChannel, { type: "offer-retry", sdp: offer, callRowId: ringing.callRowId });
+    }, 4000);
+  }
 
   showCallBar(calleeName, "Calling\u2026", false);
   clientCallStartRingtone("ringback");
-  callState.ringTimeout = setTimeout(() => { if (callState && callState.status === "ringing") endClientVoiceCall("missed", true); }, 30000);
+  callState.ringTimeout = setTimeout(() => { if (callState && callState.status === "ringing") endClientVoiceCall("missed", true); }, 45000);   // v700: 45 s, as on the staff side
 }
 
 async function handleClientCallSignal(msg) {
@@ -9583,8 +9593,18 @@ async function handleClientCallSignal(msg) {
   // comment). Checked before the `if (!callState) return` guard below,
   // since an incoming offer is exactly the one message that's expected
   // to arrive with no callState yet.
+  // v700: the caller now repeats the offer every 4 s while it rings (the
+  // staff portal's voiceRepeatOffer). A repeat only rings when this portal
+  // is not in a call and has not rung for that call already -- it is what
+  // reaches a client whose connection blinked, or who opened the portal
+  // from the phone notification after the first offer went out.
+  if (msg.type === "offer-retry") {
+    if (callState || !msg.callRowId || clientRangCallIds.has(msg.callRowId)) return;
+    msg = { ...msg, type: "offer" };
+  }
   if (msg.type === "offer") {
     if (callState) { clientCallSendOneOff(msg.from, { type: "busy" }); return; } // already on/starting a call
+    if (msg.callRowId) clientRangCallIds.add(msg.callRowId);
     callState = { peerId: msg.from, peerName: msg.fromName || "Staff", pc: null, localStream: null, outboundChannel: null, callRowId: msg.callRowId || null, status: "ringing", remoteDescSet: false, pendingCandidates: [], offerSdp: msg.sdp, videoSender: null, screenStream: null, hasScreenShare: false, peerSharing: false, videoPanelMinimized: false };
     document.getElementById("incomingCallName").textContent = callState.peerName;
     document.getElementById("incomingCallBanner").classList.add("show");
@@ -9779,6 +9799,7 @@ function endClientVoiceCall(finalStatus, notifyPeer) {
   if (!callState) return;
   const state = callState;
   clearTimeout(state.ringTimeout);
+  clearInterval(state.offerRetry);   // v700
   clientCallStopRingtone();
   clientCallAlertStop();   // v697
   // v699: the staff portal's hang-up cue, only for a call that was actually
