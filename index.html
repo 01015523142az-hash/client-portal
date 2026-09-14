@@ -8203,7 +8203,15 @@ async function loadClientChatThread() {
     const routeMatch = clientChatRoutes.find((r) => r.queue_key === data.queue_key);
     assignedStaffName = routeMatch ? routeMatch.label : "our team";
   }
-  clientChatThread = { ...data, assigned_staff_name: assignedStaffName };
+  // v701: WHO, not only which team -- client_chat_my_agent() returns the
+  // assigned person's first name and title (a client cannot read profiles).
+  let agent = null;
+  if (data.status === "routed" && data.assigned_staff_id) {
+    const { data: a } = await sb.rpc("client_chat_my_agent");
+    agent = a || null;
+  }
+  clientChatThread = { ...data, assigned_staff_name: assignedStaffName,
+                       agent_name: agent && agent.name, agent_title: agent && agent.title };
 }
 
 async function loadClientChatMessages() {
@@ -8230,7 +8238,10 @@ function renderClientChatPanel() {
     // own conversation, only staff can. This banner is now purely
     // informational.
     banner.style.display = "flex";
-    banner.innerHTML = `<span>\u2713 Connected with ${escapeHtml(clientChatThread.assigned_staff_name || "our team")} \u2014 they'll reply here.</span>`;
+    const who = clientChatThread.agent_name
+      ? clientChatThread.agent_name + (clientChatThread.assigned_staff_name ? ` (${clientChatThread.assigned_staff_name})` : "")
+      : (clientChatThread.assigned_staff_name || "our team");
+    banner.innerHTML = `<span>\u2713 You're chatting with ${escapeHtml(who)} \u2014 they'll reply here.</span>`;
     callBtn.style.display = "inline-block";
     if (humanBtn) humanBtn.style.display = "none";
   } else if (clientChatThread.status === "routed") {
