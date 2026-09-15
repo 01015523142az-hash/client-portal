@@ -9710,7 +9710,9 @@ function notifCenterRelativeTime(ts) {
 
 function addNotifCenterItem({ icon, title, body, onClick, playSound = true }) {
   const now = Date.now();
-  notifCenterItems.unshift({ id: `${now}-${Math.random()}`, icon, title, body, time: now, at: now, onClick });
+  // v730: a uuid -- the same id the server row gets (clientNotifPersist).
+  const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${now}-${Math.random()}`;
+  notifCenterItems.unshift({ id, icon, title, body, time: now, at: now, onClick });
   if (notifCenterItems.length > CLIENT_NC_MAX) notifCenterItems.length = CLIENT_NC_MAX;   // v729: was 30 items
   if (!notifCenterOpen) {
     notifCenterUnread++;
@@ -9726,6 +9728,7 @@ function addNotifCenterItem({ icon, title, body, onClick, playSound = true }) {
   }
   renderNotifCenter();
   clientNotifSave();   // v729
+  clientNotifPersist(notifCenterItems.find((n) => n.id === id));   // v730: on the server too -- any device
 }
 
 function updateNotifCenterBadge() {
@@ -9755,7 +9758,7 @@ function clientNotifSave() {
   const k = clientNotifKeys();
   if (!k || !clientNotifRestored) return;
   const cutoff = Date.now() - CLIENT_NC_KEEP_MS;
-  const keep = notifCenterItems.filter((n) => (n.at || n.time || 0) >= cutoff).slice(0, CLIENT_NC_MAX)
+  const keep = notifCenterItems.filter((n) => !n.synced && (n.at || n.time || 0) >= cutoff).slice(0, CLIENT_NC_MAX)   // v730: synced ones live on the server
     .map((n) => ({ id: n.id, icon: n.icon || null, title: n.title || '', body: n.body || '', readAt: n.readAt || null, at: n.at || n.time, time: n.at || n.time }));
   try { localStorage.setItem(k.list, JSON.stringify(keep)); } catch (e) { /* full or blocked: works for this session */ }
 }
@@ -9783,14 +9786,89 @@ function clientNotifRestore() {
   clientNotifRestored = true;
   clientNotifSave();   // drops anything that has aged past 30 days
   renderNotifCenter();
+
+  // v730: and the server's copy -- the same history on any device. The same
+  // title and body within two minutes is one event (two open tabs each save
+  // it), shown once; read on either copy counts for both.
+  sb.from('client_notifications').select('id, icon, title, body, created_at, read_at')
+    .gte('created_at', new Date(Date.now() - CLIENT_NC_KEEP_MS).toISOString())
+    .order('created_at', { ascending: false }).limit(CLIENT_NC_MAX)
+    .then(({ data, error }) => {
+      if (error) { console.warn('notification history not loaded:', error.message); return; }
+      const ids = new Set(notifCenterItems.map((n) => n.id));
+      let fresh = 0;
+      (data || []).forEach((r) => {
+        if (ids.has(r.id)) { const x = notifCenterItems.find((n) => n.id === r.id); if (x) x.synced = true; return; }
+        const at = new Date(r.created_at).getTime();
+        const dup = notifCenterItems.find((n) => (n.title || '') === (r.title || '') && (n.body || '') === (r.body || '')
+          && Math.abs((n.at || n.time || 0) - at) < 120000);
+        if (dup) {
+          (dup.dupIds = dup.dupIds || []).push(r.id);
+          if (dup.readAt && !r.read_at) clientNotifMarkReadOnServer([r.id]);
+          else if (r.read_at && !dup.readAt) dup.readAt = new Date(r.read_at).getTime();
+          return;
+        }
+        const item = { id: r.id, icon: r.icon, title: r.title, body: r.body || '', at, time: at,
+          readAt: r.read_at ? new Date(r.read_at).getTime() : null, synced: true };
+        notifCenterItems.push(item);
+        ids.add(r.id);
+        if (!item.readAt && at > opened) fresh++;
+      });
+      notifCenterItems = notifCenterItems.sort((a, b) => (b.at || b.time || 0) - (a.at || a.time || 0)).slice(0, CLIENT_NC_MAX);
+      notifCenterUnread += fresh;
+      // History that only ever lived in this browser (v729) goes up once.
+      notifCenterItems.filter((n) => !n.synced).forEach((n) => {
+        if (!CLIENT_NC_UUID.test(String(n.id)) && window.crypto && crypto.randomUUID) n.id = crypto.randomUUID();
+        clientNotifPersist(n);
+      });
+      clientNotifSave();
+      updateNotifCenterBadge();
+      renderNotifCenter();
+    });
+}
+
+// v730 (the owner: "make notifications stay on any device too"). Each
+// notification is also saved to client_notifications (RLS: a client reads and
+// writes only their own rows), so the 30-day history loads on any device.
+const CLIENT_NC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function clientNotifPersist(n) {
+  if (!n || n.synced || n.persisting || !currentClient || !CLIENT_NC_UUID.test(String(n.id))) return;
+  n.persisting = true;
+  sb.from('client_notifications').insert({
+    id: n.id, icon: n.icon || null,
+    title: String(n.title || '').slice(0, 300),
+    body: n.body ? String(n.body).slice(0, 2000) : null,
+    created_at: new Date(n.at || n.time || Date.now()).toISOString(),
+    read_at: n.readAt ? new Date(n.readAt).toISOString() : null,
+  }).then(({ error }) => {
+    n.persisting = false;
+    if (error) { console.warn('notification not saved to the server:', error.message); return; }
+    n.synced = true;
+    if (n.readAt) clientNotifMarkReadOnServer([n.id]);   // read while the insert was in flight
+    clientNotifSave();   // on the server now -- the browser copy drops it
+  });
+}
+function clientNotifMarkReadOnServer(ids) {
+  const list = (ids || []).filter((x) => CLIENT_NC_UUID.test(String(x)));
+  if (!list.length) return;
+  sb.from('client_notifications').update({ read_at: new Date().toISOString() }).in('id', list).is('read_at', null)
+    .then(({ error }) => { if (error) console.warn('notification read state not saved:', error.message); });
 }
 
 // v642: the client portal's binding for the shared notification centre below.
 var NC_ADAPTER = {
   items: function(){ return notifCenterItems; },
   refreshBadge: function(){ if(typeof updateNotifCenterBadge === 'function') updateNotifCenterBadge(); },
-  onRead: function(){ clientNotifSave(); },         // v729: remember it was read
-  onMarkAllRead: function(){ clientNotifSave(); },
+  onRead: function(n){   // v729: remember it was read; v730: on the server too
+    clientNotifMarkReadOnServer([n && n.id].concat((n && n.dupIds) || []));
+    clientNotifSave();
+  },
+  onMarkAllRead: function(){
+    var ids = [];
+    notifCenterItems.forEach(function(n){ ids.push(n.id); (n.dupIds || []).forEach(function(d){ ids.push(d); }); });
+    clientNotifMarkReadOnServer(ids);
+    clientNotifSave();
+  },
   onClose: function(){ notifCenterOpen = false; }
 };
 
@@ -10066,6 +10144,9 @@ function initNotifCenter() {
     notifCenterItems = [];
     renderNotifCenter();
     clientNotifSave();   // v729: Clear is remembered too
+    // v730: and on every device -- RLS limits this to the client's own rows.
+    sb.from('client_notifications').delete().gte('created_at', '1970-01-01')
+      .then(({ error }) => { if (error) console.warn('notifications not cleared on the server:', error.message); });
   });
   document.addEventListener("click", (e) => {
     if (notifCenterOpen && !document.getElementById("notifCenterWrap").contains(e.target)) {
