@@ -2261,7 +2261,7 @@
           <div class="leads-side-subnav" id="leadsSideSubNav">
             <button class="leads-side-subtab-btn active" data-leads-subtab="my-leads">My Opportunities</button>
             <button class="leads-side-subtab-btn" data-leads-subtab="campaign-guide">Campaign Guide</button>
-            <button class="leads-side-subtab-btn" data-leads-subtab="leads-comments">Leads Comments</button>
+            <button class="leads-side-subtab-btn" data-leads-subtab="leads-comments">Opportunity Comments</button>
           </div>
         </div>
         <button data-tab="tickets"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 8.5a2 2 0 000 3v3a1 1 0 001 1h13a1 1 0 001-1v-3a2 2 0 010-3v-3a1 1 0 00-1-1h-13a1 1 0 00-1 1z"></path></svg>Tickets<span class="hidden" id="ticketsNavBadge" style="display:inline-block; margin-left:2px; background:var(--focus-dim); color:var(--focus); border:1px solid var(--focus); border-radius:999px; padding:1px 7px; font-family:var(--mono); font-size:10px; font-weight:800;"></span></button>
@@ -2448,17 +2448,17 @@
         </div>
 
         <div class="panel" id="campaignBarsPanel">
-          <div class="panel-title">Leads by campaign</div>
+          <div class="panel-title">Seller opportunities by campaign</div>
           <div id="campaignBars"></div>
         </div>
 
         <div class="panel" data-comment-anchor="852c442117-div">
-          <div class="panel-title">Leads in the last 14 days</div>
+          <div class="panel-title">Seller opportunities in the last 14 days</div>
           <div id="timeBars"></div>
         </div>
 
         <div class="panel" data-comment-anchor="ca746ad87b-div">
-          <div class="panel-title">Leads by day of week (last 90 days)</div>
+          <div class="panel-title">Seller opportunities by day of week (last 90 days)</div>
           <div id="weekdayBars"></div>
         </div>
 
@@ -2513,7 +2513,7 @@
            client has opened, in one place, with reply while open. ===== -->
       <div id="leadsSubtab-leads-comments" class="hidden">
         <div class="info-note" style="font-size:11.5px; line-height:1.5; margin-bottom:14px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--inset);" data-comment-anchor="ee06eae04a-div">
-          Every dispute and feedback thread you've opened on your leads. Reply while a thread is still open — our team closes it once it's resolved.
+          Every dispute and feedback thread you've opened on your seller opportunities. Reply while a thread is still open — our team closes it once it's resolved.
         </div>
         <div id="lcList"></div>
         <div class="empty-state hidden" id="lcEmpty">No disputes or feedback yet — use "Dispute this lead" or "Have a feedback" on an opportunity in My Opportunities.</div>
@@ -6331,7 +6331,7 @@ const CLIENT_TOUR_STEPS = [
   { tab: "leads", subtab: "my-leads", target: "#leadsSideSubNav", title: "The Seller Opportunities tab", body: "Every seller opportunity delivered to you lives here, searchable and filterable by campaign, status, and date." },
   { tab: "leads", subtab: "my-leads", target: "#leadsGrid", title: "Built-in accountability", body: "Each lead shows New or Accepted at a glance, and you can filter by status or a date range above. Click \u201cView details\u201d on any lead for the full picture \u2014 every field submitted, plus the call recording when there is one. Spot something off? Dispute it within 2 business days, or leave open-ended feedback any time \u2014 both go straight to our team, no email back-and-forth." },
   { tab: "leads", subtab: "campaign-guide", target: "#leadsSubtab-campaign-guide", title: "Campaign Guide", body: "The exact qualification checklist our callers work from for your campaigns \u2014 full transparency on what counts as a qualified lead." },
-  { tab: "leads", subtab: "leads-comments", target: "#leadsSubtab-leads-comments", title: "Leads Comments", body: "Every dispute and feedback thread you've opened lives here permanently, so nothing gets lost." },
+  { tab: "leads", subtab: "leads-comments", target: "#leadsSubtab-leads-comments", title: "Opportunity Comments", body: "Every dispute and feedback thread you've opened lives here permanently, so nothing gets lost." },
   { tab: "tickets", target: "#tab-tickets", title: "The Tickets tab", body: "For borderline leads, we'll ask you first \u2014 a simple yes or no, with no seller contact info shared until you say yes." },
   { tab: "buylist", subtab: "request", target: "#buylistSubtab-request", title: "Buy a list \u2014 Request a list", body: "Need a fresh list of records to work? Tell us the type of leads, property type, target market, and how many records \u2014 see the price instantly and pay right here." },
   { tab: "buylist", subtab: "your-requests", target: "#buylistSubtab-your-requests", title: "Buy a list \u2014 Your list requests", body: "Track every list you've ordered, its status, and download the file the moment it's ready." },
