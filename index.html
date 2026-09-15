@@ -9692,6 +9692,10 @@ function clientChatMaybeNotify(m) {
 let notifCenterItems = [];
 let notifCenterUnread = 0;
 let notifCenterOpen = false;
+// v729: see clientNotifSave().
+const CLIENT_NC_KEEP_MS = 30 * 24 * 3600 * 1000;
+const CLIENT_NC_MAX = 300;
+let clientNotifRestored = false;
 
 function notifCenterRelativeTime(ts) {
   const diffMs = Date.now() - ts;
@@ -9705,8 +9709,9 @@ function notifCenterRelativeTime(ts) {
 }
 
 function addNotifCenterItem({ icon, title, body, onClick, playSound = true }) {
-  notifCenterItems.unshift({ id: `${Date.now()}-${Math.random()}`, icon, title, body, time: Date.now(), onClick });
-  if (notifCenterItems.length > 30) notifCenterItems.length = 30;
+  const now = Date.now();
+  notifCenterItems.unshift({ id: `${now}-${Math.random()}`, icon, title, body, time: now, at: now, onClick });
+  if (notifCenterItems.length > CLIENT_NC_MAX) notifCenterItems.length = CLIENT_NC_MAX;   // v729: was 30 items
   if (!notifCenterOpen) {
     notifCenterUnread++;
     updateNotifCenterBadge();
@@ -9720,6 +9725,7 @@ function addNotifCenterItem({ icon, title, body, onClick, playSound = true }) {
     if (playSound) clientPlayOpsNotificationSound();
   }
   renderNotifCenter();
+  clientNotifSave();   // v729
 }
 
 function updateNotifCenterBadge() {
@@ -9731,12 +9737,60 @@ function updateNotifCenterBadge() {
 }
 
 
+// v729 (the owner: "Notifications sent to this inbox can be viewed for up to
+// 30 days? -- they disappear; make them stay 30 days in both staff & client
+// portals"). The bell said 30 days but kept nothing past a reload. Now its
+// list is saved in this browser per signed-in client
+// ('ncHistory:client:<client id>') and put back at sign-in, for 30 days --
+// the same as the staff portal's staffNotifSave(). A restored item that linked
+// somewhere cannot carry the link across a reload; it opens its detail card.
+// 'ncOpened:client:<id>' remembers when the bell was last opened, so after a
+// reload only what arrived since then rings the badge. Nothing is saved until
+// the history has been put back, so an early notification cannot overwrite it.
+function clientNotifKeys() {
+  const id = currentClient && currentClient.id;
+  return id ? { list: 'ncHistory:client:' + id, opened: 'ncOpened:client:' + id } : null;
+}
+function clientNotifSave() {
+  const k = clientNotifKeys();
+  if (!k || !clientNotifRestored) return;
+  const cutoff = Date.now() - CLIENT_NC_KEEP_MS;
+  const keep = notifCenterItems.filter((n) => (n.at || n.time || 0) >= cutoff).slice(0, CLIENT_NC_MAX)
+    .map((n) => ({ id: n.id, icon: n.icon || null, title: n.title || '', body: n.body || '', readAt: n.readAt || null, at: n.at || n.time, time: n.at || n.time }));
+  try { localStorage.setItem(k.list, JSON.stringify(keep)); } catch (e) { /* full or blocked: works for this session */ }
+}
+function clientNotifMarkOpened() {
+  const k = clientNotifKeys();
+  if (!k) return;
+  try { localStorage.setItem(k.opened, String(Date.now())); } catch (e) {}
+}
+function clientNotifRestore() {
+  const k = clientNotifKeys();
+  if (!k || clientNotifRestored) return;
+  let saved = [];
+  let opened = 0;
+  try {
+    saved = JSON.parse(localStorage.getItem(k.list) || '[]');
+    opened = Number(localStorage.getItem(k.opened)) || 0;
+  } catch (e) { saved = []; }
+  const cutoff = Date.now() - CLIENT_NC_KEEP_MS;
+  const have = new Set(notifCenterItems.map((n) => n.id));
+  const back = (Array.isArray(saved) ? saved : [])
+    .filter((n) => n && n.id && (n.at || n.time || 0) >= cutoff && !have.has(n.id));
+  notifCenterItems = notifCenterItems.concat(back)
+    .sort((a, b) => (b.at || b.time || 0) - (a.at || a.time || 0)).slice(0, CLIENT_NC_MAX);
+  notifCenterUnread += back.filter((n) => !n.readAt && (n.at || n.time || 0) > opened).length;
+  clientNotifRestored = true;
+  clientNotifSave();   // drops anything that has aged past 30 days
+  renderNotifCenter();
+}
+
 // v642: the client portal's binding for the shared notification centre below.
 var NC_ADAPTER = {
   items: function(){ return notifCenterItems; },
   refreshBadge: function(){ if(typeof updateNotifCenterBadge === 'function') updateNotifCenterBadge(); },
-  onRead: function(){},
-  onMarkAllRead: function(){},
+  onRead: function(){ clientNotifSave(); },         // v729: remember it was read
+  onMarkAllRead: function(){ clientNotifSave(); },
   onClose: function(){ notifCenterOpen = false; }
 };
 
@@ -9994,6 +10048,7 @@ function navigateToClientTab(tabName, subtabName) {
 function initNotifCenter() {
   const bellBtn = document.getElementById("notifBellBtn");
   const panel = document.getElementById("notifCenterPanel");
+  clientNotifRestore();   // v729: this browser's 30-day history
   bellBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     const tweaksPanelEl = document.getElementById("tweaksPanel");
@@ -10003,12 +10058,14 @@ function initNotifCenter() {
     if (notifCenterOpen) {
       notifCenterUnread = 0;
       updateNotifCenterBadge();
+      clientNotifMarkOpened();   // v729
     }
   });
   document.getElementById("notifCenterClearBtn").addEventListener("click", (e) => {
     e.stopPropagation();
     notifCenterItems = [];
     renderNotifCenter();
+    clientNotifSave();   // v729: Clear is remembered too
   });
   document.addEventListener("click", (e) => {
     if (notifCenterOpen && !document.getElementById("notifCenterWrap").contains(e.target)) {
