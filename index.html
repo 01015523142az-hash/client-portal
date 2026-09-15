@@ -2027,6 +2027,24 @@
   .photo-viewer-stage.dragging{ cursor:grabbing; }
   .photo-viewer-img{ position:absolute; left:50%; top:50%; max-width:none; max-height:none; width:auto; height:auto;
     user-select:none; -webkit-user-drag:none; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  /* v718: emoji reactions on chat messages (see the reactions helpers). */
+  .chat-rx{ display:flex; flex-wrap:wrap; gap:4px; margin:3px 2px 0; }
+  .chat-rx:empty{ display:none; }
+  .chat-rx.mine{ justify-content:flex-end; }
+  .chat-rx-chip{ display:inline-flex; align-items:center; gap:3px; width:auto; margin:0; padding:1px 7px; border-radius:999px;
+    border:1px solid var(--border-light); background:var(--inset); color:var(--text); font-family:var(--sans); font-size:12.5px;
+    line-height:1.5; cursor:pointer; }
+  .chat-rx-chip span{ font-family:var(--mono); font-size:10px; color:var(--text-2); }
+  .chat-rx-chip.me{ border-color:var(--focus); background:var(--focus-dim); }
+  .chat-rx-add{ margin-left:6px; cursor:pointer; font-family:var(--sans); font-size:11px; opacity:0; transition:opacity .12s; user-select:none; }
+  .chat-msg-row:hover .chat-rx-add, .chat-rx-add:focus-visible{ opacity:.85; }
+  @media (hover:none){ .chat-rx-add{ opacity:.6; } }
+  .chat-rx-picker{ position:fixed; z-index:10060; display:flex; gap:2px; padding:5px; border-radius:999px; background:var(--card);
+    border:1px solid var(--border-light); box-shadow:0 12px 30px -8px rgba(0,0,0,.55); }
+  .chat-rx-picker[hidden]{ display:none; }
+  .chat-rx-picker button{ width:32px; height:32px; margin:0; padding:0; border:none; border-radius:50%; background:none;
+    font-size:18px; line-height:1; cursor:pointer; transition:transform .1s; }
+  .chat-rx-picker button:hover{ background:var(--card-hover); transform:scale(1.15); }
 </style>
 
 </head>
@@ -8345,6 +8363,7 @@ async function initClientChatWidget() {
   await loadClientChatMessages();
   renderClientChatPanel();
   subscribeClientChatRealtime();
+  subscribeClientChatReactions();   // v718
   initClientCallSignaling();
   setTimeout(() => clientResumeSavedCall(), 1500);   // v707: a call this tab was on before a refresh
   initClientChatTypingSignaling();
@@ -8887,7 +8906,8 @@ function renderClientChatMessages() {
             ${headHtml}
             ${bodyHtml}
             ${attachmentHtml}
-            <div class="chat-msg-meta">${label}${time}${editedLabel}${editBtnHtml}${ticksHtml ? " " + ticksHtml : ""}</div>
+            <div class="chat-msg-meta">${label}${time}${editedLabel}${editBtnHtml}${ticksHtml ? " " + ticksHtml : ""}${clientRxAddHtml(m.id)}</div>
+            ${clientRxHtml(m.id, mine)}
           </div>`;
       })
       .join("") + (clientChatView !== "past" && clientPeerTypingUntil && clientPeerTypingUntil > Date.now() ? clientChatTypingBubbleHtml() : ""));
@@ -8906,6 +8926,156 @@ function renderClientChatMessages() {
 // 'ai' (Remi). The badge is what stops a client mistaking an assistant
 // reply for a human one -- which matters more here than it does on the
 // staff side.
+// v718 (the owner: "add emoji reaction on messages"). The same as the staff
+// portal's: a small ☺+ at the end of a message's time line opens eight
+// emojis; reactions show as chips under the message -- click one to add or
+// take back yours, hover it for who. Rows live in
+// client_chat_message_reactions, which only this client and the staff on the
+// chat can read. Fetched in one batch per drawn thread; realtime (filtered to
+// this client) repaints the chips in place.
+const CLIENT_RX_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "✅"];
+const clientRx = new Map();          // message id -> [{ who, kind, emoji }]
+const clientRxFetched = new Set();
+const clientRxQueue = new Set();
+let clientRxTimer = null;
+function clientRxAddHtml(id) {
+  return id ? `<span class="chat-rx-add" role="button" tabindex="0" title="React" data-rx-id="${escapeHtml(id)}">&#9786;+</span>` : "";
+}
+function clientRxHtml(id, mine) {
+  if (!id) return "";
+  if (!clientRxFetched.has(id)) { clientRxQueue.add(id); if (!clientRxTimer) clientRxTimer = setTimeout(clientRxFlush, 60); }
+  return `<div class="chat-rx${mine ? " mine" : ""}" data-rx-id="${escapeHtml(id)}">${clientRxInner(id)}</div>`;
+}
+function clientRxRow(r) { return { who: r.reactor_id, kind: r.reactor_kind, emoji: r.emoji }; }
+function clientRxAdd(r) {
+  const x = clientRxRow(r);
+  const list = clientRx.get(r.message_id) || [];
+  if (!list.some((y) => y.who === x.who && y.emoji === x.emoji)) list.push(x);
+  clientRx.set(r.message_id, list);
+}
+function clientRxRemove(r) {
+  const x = clientRxRow(r);
+  clientRx.set(r.message_id, (clientRx.get(r.message_id) || []).filter((y) => !(y.who === x.who && y.emoji === x.emoji)));
+}
+function clientRxName(r) {
+  if (currentClient && r.who === currentClient.id) return "You";
+  if (r.kind === "client") return "Client";
+  const card = clientChatStaffCards[r.who];
+  return (card && card.name) || "PropTech AI";
+}
+function clientRxInner(id) {
+  const groups = new Map();
+  (clientRx.get(id) || []).forEach((r) => { if (!groups.has(r.emoji)) groups.set(r.emoji, []); groups.get(r.emoji).push(r); });
+  return [...groups.entries()].map(([emoji, rs]) => {
+    const me = currentClient && rs.some((r) => r.who === currentClient.id);
+    return `<button type="button" class="chat-rx-chip${me ? " me" : ""}" data-emoji="${escapeHtml(emoji)}" title="${escapeHtml(rs.map(clientRxName).join(", "))}">${escapeHtml(emoji)}<span>${rs.length}</span></button>`;
+  }).join("");
+}
+function clientRxPaint(id) {
+  document.querySelectorAll(`.chat-rx[data-rx-id="${CSS.escape(id)}"]`).forEach((el) => { el.innerHTML = clientRxInner(id); });
+}
+async function clientRxFlush() {
+  clientRxTimer = null;
+  const ids = [...clientRxQueue];
+  clientRxQueue.clear();
+  if (!ids.length || !currentClient) return;
+  ids.forEach((id) => clientRxFetched.add(id));
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+  const results = await Promise.all(chunks.map((c) => sb.from("client_chat_message_reactions")
+    .select("message_id, reactor_id, reactor_kind, emoji").in("message_id", c).then((r) => r)));
+  const failed = results.find((r) => r.error);
+  if (failed) { ids.forEach((id) => clientRxFetched.delete(id)); console.warn("[chat] reactions load failed", failed.error); return; }
+  ids.forEach((id) => clientRx.delete(id));
+  results.forEach((r) => (r.data || []).forEach(clientRxAdd));
+  ids.forEach(clientRxPaint);
+}
+async function clientRxToggle(id, emoji) {
+  if (!currentClient || !id) return;
+  const me = currentClient.id;
+  const has = (clientRx.get(id) || []).some((r) => r.who === me && r.emoji === emoji);
+  const row = { message_id: id, client_id: me, reactor_id: me, reactor_kind: "client", emoji };
+  if (has) clientRxRemove(row); else clientRxAdd(row);
+  clientRxPaint(id);
+  const res = has
+    ? await sb.from("client_chat_message_reactions").delete().eq("message_id", id).eq("reactor_id", me).eq("emoji", emoji)
+    : await sb.from("client_chat_message_reactions").insert(row);
+  if (res.error && res.error.code !== "23505") {
+    if (has) clientRxAdd(row); else clientRxRemove(row);
+    clientRxPaint(id);
+    alert("Could not save the reaction: " + res.error.message);
+  }
+}
+let clientRxPickerFor = null;
+function clientRxOpenPicker(btn) {
+  let p = document.getElementById("chatRxPicker");
+  if (!p) {
+    p = document.createElement("div");
+    p.id = "chatRxPicker";
+    p.className = "chat-rx-picker";
+    p.hidden = true;
+    p.innerHTML = CLIENT_RX_EMOJIS.map((e) => `<button type="button" data-emoji="${e}" title="${e}">${e}</button>`).join("");
+    document.body.appendChild(p);
+  }
+  clientRxPickerFor = btn.dataset.rxId;
+  p.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const w = p.offsetWidth, h = p.offsetHeight;
+  p.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px";
+  p.style.top = (r.top - h - 6 < 8 ? r.bottom + 6 : r.top - h - 6) + "px";
+}
+function clientRxClosePicker() {
+  const p = document.getElementById("chatRxPicker");
+  if (p && !p.hidden) p.hidden = true;
+  clientRxPickerFor = null;
+}
+document.addEventListener("click", (e) => {
+  const pick = e.target.closest("#chatRxPicker button[data-emoji]");
+  if (pick) {
+    e.stopPropagation();
+    const id = clientRxPickerFor;
+    clientRxClosePicker();
+    if (id) clientRxToggle(id, pick.dataset.emoji);
+    return;
+  }
+  const add = e.target.closest(".chat-rx-add");
+  if (add) { e.stopPropagation(); clientRxOpenPicker(add); return; }
+  const chip = e.target.closest(".chat-rx-chip");
+  if (chip) {
+    e.stopPropagation();
+    clientRxToggle(chip.closest(".chat-rx").dataset.rxId, chip.dataset.emoji);
+    return;
+  }
+  clientRxClosePicker();
+}, true);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") clientRxClosePicker();
+  else if ((e.key === "Enter" || e.key === " ") && e.target && e.target.classList && e.target.classList.contains("chat-rx-add")) { e.preventDefault(); clientRxOpenPicker(e.target); }
+});
+document.addEventListener("scroll", clientRxClosePicker, true);
+let clientRxChannel = null;
+function subscribeClientChatReactions() {
+  if (clientRxChannel || !currentClient) return;
+  const ch = sb.channel("client-chat-rx-" + currentClient.id);
+  clientRxChannel = ch;
+  ch.on("postgres_changes",
+      { event: "*", schema: "public", table: "client_chat_message_reactions", filter: `client_id=eq.${currentClient.id}` },
+      (payload) => {
+        const r = payload.eventType === "DELETE" ? payload.old : payload.new;
+        if (!r || !r.message_id || !clientRxFetched.has(r.message_id)) return;
+        if (payload.eventType === "DELETE") clientRxRemove(r); else clientRxAdd(r);
+        clientRxPaint(r.message_id);
+      })
+    .subscribe((status) => {
+      if (ch !== clientRxChannel) return;
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        clientRxChannel = null;
+        try { sb.removeChannel(ch); } catch (err) { /* already gone */ }
+        setTimeout(subscribeClientChatReactions, 5000);
+      }
+    });
+}
+
 function chatMsgHeadHtml(name, role, detail) {
   // v704: a staff member's badge carries their title ("Quality Lead") when
   // we know it, as the owner's reference does; "Staff" otherwise.
