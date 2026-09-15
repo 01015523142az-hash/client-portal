@@ -2257,9 +2257,9 @@
         <div class="nav-section-label">Operations</div>
         <button class="active" data-tab="dashboard"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.5"></rect><rect x="11" y="2.5" width="6.5" height="6.5" rx="1.5"></rect><rect x="2.5" y="11" width="6.5" height="6.5" rx="1.5"></rect><rect x="11" y="11" width="6.5" height="6.5" rx="1.5"></rect></svg>Dashboard</button>
         <div class="side-nav-group" id="leadsNavGroup">
-          <button data-tab="leads"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7" cy="6.5" r="2.5"></circle><path d="M2.5 16c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5"></path><circle cx="14" cy="7.5" r="2"></circle><path d="M12.5 16c0-2 1-3.5 3-3.7"></path></svg>Leads</button>
+          <button data-tab="leads"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7" cy="6.5" r="2.5"></circle><path d="M2.5 16c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5"></path><circle cx="14" cy="7.5" r="2"></circle><path d="M12.5 16c0-2 1-3.5 3-3.7"></path></svg>Seller Opportunities</button>
           <div class="leads-side-subnav" id="leadsSideSubNav">
-            <button class="leads-side-subtab-btn active" data-leads-subtab="my-leads">My Leads</button>
+            <button class="leads-side-subtab-btn active" data-leads-subtab="my-leads">My Opportunities</button>
             <button class="leads-side-subtab-btn" data-leads-subtab="campaign-guide">Campaign Guide</button>
             <button class="leads-side-subtab-btn" data-leads-subtab="leads-comments">Leads Comments</button>
           </div>
@@ -2516,7 +2516,7 @@
           Every dispute and feedback thread you've opened on your leads. Reply while a thread is still open — our team closes it once it's resolved.
         </div>
         <div id="lcList"></div>
-        <div class="empty-state hidden" id="lcEmpty">No disputes or feedback yet — use "Dispute this lead" or "Have a feedback" on a lead in My Leads.</div>
+        <div class="empty-state hidden" id="lcEmpty">No disputes or feedback yet — use "Dispute this lead" or "Have a feedback" on an opportunity in My Opportunities.</div>
       </div>
     </section>
 
@@ -2525,7 +2525,7 @@
          card. Shares the same dispute/feedback/recording logic; just a
          focused, single-lead layout instead of the card grid. ===== -->
     <section id="tab-lead-detail" class="hidden">
-      <div class="back-link" onclick="backToLeadsFromDetail()">← Back to Leads</div>
+      <div class="back-link" onclick="backToLeadsFromDetail()">← Back to Seller Opportunities</div>
       <div id="leadDetailContent"></div>
     </section>
 
@@ -2534,7 +2534,7 @@
          Phone/Email are deliberately withheld until you say Yes. ===== -->
     <section id="tab-tickets" class="hidden">
       <div class="info-note" style="font-size:11.5px; line-height:1.5; margin-bottom:14px;" data-comment-anchor="e7f3e0f83c-div">
-        A ticket our team thinks may be worth your time — property/deal details only, no seller contact info yet. Say <strong>Yes</strong> and we'll get a recording attached and move it into your Leads tab; say <strong>No</strong> and it's closed out on our end.
+        A ticket our team thinks may be worth your time — property/deal details only, no seller contact info yet. Say <strong>Yes</strong> and we'll get a recording attached and move it into your Seller Opportunities tab; say <strong>No</strong> and it's closed out on our end.
       </div>
       <div id="ticketsGrid" class="tickets-grid"></div>
       <div class="empty-state hidden" id="ticketsEmpty">No tickets waiting on you right now.</div>
@@ -4814,7 +4814,7 @@ if (new URLSearchParams(window.location.search).get("campaign_payment") === "suc
   addNotifCenterItem({
     icon: "\u{1F4E3}",
     title: "Payment received",
-    body: `Your campaign subscription is being set up — it'll appear on your Dashboard and under Leads → Campaign Guide shortly, and under Billing once the subscription is active. Your caller will start ${campNextBusinessDayLabel()}; we've extended your first billing cycle by that same gap.`,
+    body: `Your campaign subscription is being set up — it'll appear on your Dashboard and under Seller Opportunities → Campaign Guide shortly, and under Billing once the subscription is active. Your caller will start ${campNextBusinessDayLabel()}; we've extended your first billing cycle by that same gap.`,
     onClick: () => { loadData(); if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions(); refreshAccountTypeAfterUpgrade(); },
   });
   loadData();
@@ -4908,7 +4908,7 @@ async function openCreateCampaignModal() {
   const box = document.getElementById("campaignModalBox");
   box.innerHTML = `
     <div class="modal-title">Create a new campaign</div>
-    <div class="modal-sub">Tell us about the leads you're looking for — our team will review this and get your campaign set up. You'll be able to see it under Leads → Campaign Guide right away.</div>
+    <div class="modal-sub">Tell us about the leads you're looking for — our team will review this and get your campaign set up. You'll be able to see it under Seller Opportunities → Campaign Guide right away.</div>
 
     <label>Campaign Name *</label>
     <input type="text" id="campCampaignName" placeholder="e.g. Downtown Distressed Sellers">
@@ -5188,7 +5188,7 @@ async function submitCreateCampaign() {
     if (data.billingWarning) {
       alert(`Campaign created and added to your existing subscription, but the billing charge failed: ${data.billingWarning}\n\nWe've added it as a pending charge you can pay from Billing → Pending payment.`);
     } else {
-      alert("Campaign created and added to your existing subscription — it'll appear on your Dashboard and under Leads → Campaign Guide shortly.");
+      alert("Campaign created and added to your existing subscription — it'll appear on your Dashboard and under Seller Opportunities → Campaign Guide shortly.");
     }
     loadData();
     if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions();
@@ -6328,7 +6328,7 @@ const CLIENT_TOUR_STEPS = [
   { tab: "dashboard", target: "#campaignBarsPanel", title: "Campaign breakdown", body: "See exactly which campaigns are producing for you at a glance, so you always know what you're getting for what you're paying." },
   { tab: "dashboard", target: "#recentLeadsList", title: "Freshness, visible", body: "The most recent leads delivered to you \u2014 a quick reassurance that delivery is active and current." },
   { target: "#openCreateCampaignBtn", title: "Start a new campaign", body: "Ready to get leads flowing in? Click \u201c+ Create Campaign\u201d right here \u2014 it's always in the header, on any tab. You'll choose a caller tier (part-time or full-time), pick our dialer/data or your own, and answer a short qualification questionnaire \u2014 property type, target market, and what makes a lead worth calling you about \u2014 with the price updating live as you go. Submit it and you'll go straight to checkout; your campaign shows up under Campaign Guide the moment payment goes through." },
-  { tab: "leads", subtab: "my-leads", target: "#leadsSideSubNav", title: "The Leads tab", body: "Every lead delivered to you lives here, searchable and filterable by campaign, status, and date." },
+  { tab: "leads", subtab: "my-leads", target: "#leadsSideSubNav", title: "The Seller Opportunities tab", body: "Every seller opportunity delivered to you lives here, searchable and filterable by campaign, status, and date." },
   { tab: "leads", subtab: "my-leads", target: "#leadsGrid", title: "Built-in accountability", body: "Each lead shows New or Accepted at a glance, and you can filter by status or a date range above. Click \u201cView details\u201d on any lead for the full picture \u2014 every field submitted, plus the call recording when there is one. Spot something off? Dispute it within 2 business days, or leave open-ended feedback any time \u2014 both go straight to our team, no email back-and-forth." },
   { tab: "leads", subtab: "campaign-guide", target: "#leadsSubtab-campaign-guide", title: "Campaign Guide", body: "The exact qualification checklist our callers work from for your campaigns \u2014 full transparency on what counts as a qualified lead." },
   { tab: "leads", subtab: "leads-comments", target: "#leadsSubtab-leads-comments", title: "Leads Comments", body: "Every dispute and feedback thread you've opened lives here permanently, so nothing gets lost." },
@@ -7017,7 +7017,7 @@ async function loadTickets(){
         addNotifCenterItem({
           icon: "\u{1F3AB}",
           title: "New ticket available for review",
-          body: "Say Yes or No to move it into your Leads tab.",
+          body: "Say Yes or No to move it into your Seller Opportunities tab.",
           onClick: () => navigateToClientTab("tickets"),
         });
       });
