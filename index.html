@@ -2010,6 +2010,23 @@
   #clientGreetingCompany:empty, #clientGreetingLastLogin:empty{ display:none; }
   #clientGreetingLastLogin{ font-family:var(--mono); font-size:10.5px; color:var(--text-2); margin-top:2px; }
 
+  /* v716: the chat photo viewer (see openPhotoViewer). Dark in both themes,
+     like any photo viewer; above the call layers (10000) while open. */
+  .photo-viewer{ position:fixed; inset:0; z-index:10050; display:flex; flex-direction:column; background:rgba(8,10,12,.93); }
+  .photo-viewer[hidden]{ display:none; }
+  .photo-viewer-bar{ display:flex; align-items:center; gap:8px; padding:10px 14px; color:#fff; flex-wrap:wrap; }
+  .photo-viewer-name{ flex:1; min-width:0; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:.85; }
+  .photo-viewer-btn{ min-width:36px; height:36px; padding:0 10px; border-radius:10px; border:1px solid rgba(255,255,255,.2);
+    background:rgba(255,255,255,.08); color:#fff; font-size:17px; font-weight:700; line-height:1; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; }
+  .photo-viewer-btn:hover{ background:rgba(255,255,255,.18); }
+  .photo-viewer-btn[data-pv="fit"]{ font-size:12.5px; }
+  .photo-viewer-zoom{ min-width:48px; text-align:center; font-size:12px; font-variant-numeric:tabular-nums; opacity:.8; }
+  .photo-viewer-stage{ flex:1; position:relative; overflow:hidden; touch-action:none; cursor:zoom-in; }
+  .photo-viewer-stage.zoomed{ cursor:grab; }
+  .photo-viewer-stage.dragging{ cursor:grabbing; }
+  .photo-viewer-img{ position:absolute; left:50%; top:50%; max-width:none; max-height:none; width:auto; height:auto;
+    user-select:none; -webkit-user-drag:none; box-shadow:0 10px 40px rgba(0,0,0,.5); }
 </style>
 
 </head>
@@ -9025,6 +9042,156 @@ function chatKeepPinned(box, wasAtBottom) {
   });
 }
 
+// v716 (the owner: "a photo sent in chat should pop up, with zoom in and zoom
+// out, instead of opening in another tab"). One viewer for every chat photo:
+// the - / + buttons, the mouse wheel and a two-finger pinch zoom around the
+// pointer; a zoomed photo is dragged around; double-click toggles fit / 2.5x;
+// Esc, the x or a click on the dark area closes it. Download keeps the
+// existing save-to-disk path (downloadFileToDisk). Built on first use.
+const photoViewer = { el: null, stage: null, img: null, label: null, url: '', name: '',
+  s: 1, fit: 1, tx: 0, ty: 0, pointers: new Map(), pinch: null, moved: false, downOnStage: false, prevOverflow: '' };
+function photoViewerApply(){
+  const v = photoViewer;
+  v.img.style.transform = `translate(${v.tx}px, ${v.ty}px) translate(-50%, -50%) scale(${v.s})`;
+  v.label.textContent = Math.round(v.s * 100) + '%';
+  v.stage.classList.toggle('zoomed', v.s > v.fit * 1.01);
+}
+// Zoom to scale ns keeping the screen point (cx, cy) still -- the photo's
+// centre sits at the stage centre + (tx, ty), a photo pixel q at centre + t + s*q.
+function photoViewerZoomTo(ns, cx, cy){
+  const v = photoViewer;
+  ns = Math.min(Math.max(v.fit * 8, 4), Math.max(v.fit * 0.5, ns));
+  const r = v.stage.getBoundingClientRect();
+  const px = (cx == null ? r.left + r.width / 2 : cx) - (r.left + r.width / 2);
+  const py = (cy == null ? r.top + r.height / 2 : cy) - (r.top + r.height / 2);
+  const k = ns / v.s;
+  v.tx = px - k * (px - v.tx);
+  v.ty = py - k * (py - v.ty);
+  v.s = ns;
+  photoViewerApply();
+}
+function photoViewerZoomBy(f, cx, cy){ photoViewerZoomTo(photoViewer.s * f, cx, cy); }
+function photoViewerFit(){
+  const v = photoViewer;
+  const r = v.stage.getBoundingClientRect();
+  const w = v.img.naturalWidth || 1, h = v.img.naturalHeight || 1;
+  v.fit = Math.max(0.01, Math.min((r.width - 32) / w, (r.height - 32) / h, 1));   // never blown up past its real size
+  v.s = v.fit; v.tx = 0; v.ty = 0;
+  photoViewerApply();
+}
+function photoViewerBuild(){
+  if(photoViewer.el) return;
+  const v = photoViewer;
+  const el = document.createElement('div');
+  el.className = 'photo-viewer';
+  el.hidden = true;
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.setAttribute('aria-label', 'Photo');
+  el.innerHTML = `
+    <div class="photo-viewer-bar">
+      <div class="photo-viewer-name"></div>
+      <button type="button" class="photo-viewer-btn" data-pv="out" title="Zoom out (-)" aria-label="Zoom out">&minus;</button>
+      <div class="photo-viewer-zoom">100%</div>
+      <button type="button" class="photo-viewer-btn" data-pv="in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button type="button" class="photo-viewer-btn" data-pv="fit" title="Fit to screen (0)">Fit</button>
+      <button type="button" class="photo-viewer-btn" data-pv="download" title="Download" aria-label="Download">&#11015;</button>
+      <button type="button" class="photo-viewer-btn" data-pv="close" title="Close (Esc)" aria-label="Close">&times;</button>
+    </div>
+    <div class="photo-viewer-stage"><img class="photo-viewer-img" alt="" draggable="false"></div>`;
+  document.body.appendChild(el);
+  v.el = el;
+  v.stage = el.querySelector('.photo-viewer-stage');
+  v.img = el.querySelector('.photo-viewer-img');
+  v.label = el.querySelector('.photo-viewer-zoom');
+  el.querySelector('.photo-viewer-bar').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pv]');
+    if(!b) return;
+    const act = b.dataset.pv;
+    if(act === 'in') photoViewerZoomBy(1.25);
+    else if(act === 'out') photoViewerZoomBy(0.8);
+    else if(act === 'fit') photoViewerFit();
+    else if(act === 'download') downloadFileToDisk(v.url, v.name || 'photo');
+    else if(act === 'close') closePhotoViewer();
+  });
+  const stage = v.stage;
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    photoViewerZoomBy(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+  }, { passive: false });
+  stage.addEventListener('dblclick', (e) => {
+    if(v.s > v.fit * 1.05) photoViewerFit();
+    else photoViewerZoomTo(Math.max(v.fit * 2.5, 1), e.clientX, e.clientY);
+  });
+  stage.addEventListener('pointerdown', (e) => {
+    if(!v.pointers.size){ v.moved = false; v.downOnStage = e.target === stage; }
+    try{ stage.setPointerCapture(e.pointerId); }catch(err){ /* pointer already gone */ }
+    v.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if(v.pointers.size === 2){
+      const [a, b] = [...v.pointers.values()];
+      v.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: v.s };
+    }
+  });
+  stage.addEventListener('pointermove', (e) => {
+    const prev = v.pointers.get(e.pointerId);
+    if(!prev) return;
+    const cur = { x: e.clientX, y: e.clientY };
+    v.pointers.set(e.pointerId, cur);
+    if(v.pointers.size === 2 && v.pinch){
+      const [a, b] = [...v.pointers.values()];
+      photoViewerZoomTo(v.pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / v.pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      v.moved = true;
+      return;
+    }
+    const dx = cur.x - prev.x, dy = cur.y - prev.y;
+    if(Math.abs(dx) + Math.abs(dy) > 1){ v.moved = true; stage.classList.add('dragging'); }
+    v.tx += dx; v.ty += dy;
+    photoViewerApply();
+  });
+  const release = (e) => {
+    v.pointers.delete(e.pointerId);
+    if(v.pointers.size < 2) v.pinch = null;
+    if(!v.pointers.size) stage.classList.remove('dragging');
+  };
+  stage.addEventListener('pointerup', (e) => {
+    release(e);
+    // A plain click on the dark area (not the photo, not a drag) closes it.
+    if(!v.pointers.size && !v.moved && v.downOnStage) closePhotoViewer();
+  });
+  stage.addEventListener('pointercancel', release);
+  document.addEventListener('keydown', (e) => {
+    if(!v.el || v.el.hidden) return;
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); closePhotoViewer(); }
+    else if(e.key === '+' || e.key === '='){ e.preventDefault(); photoViewerZoomBy(1.25); }
+    else if(e.key === '-' || e.key === '_'){ e.preventDefault(); photoViewerZoomBy(0.8); }
+    else if(e.key === '0'){ e.preventDefault(); photoViewerFit(); }
+  }, true);
+  window.addEventListener('resize', () => { if(!v.el.hidden) photoViewerFit(); });
+}
+function openPhotoViewer(url, name){
+  photoViewerBuild();
+  const v = photoViewer;
+  v.url = url;
+  v.name = name || 'photo';
+  v.el.querySelector('.photo-viewer-name').textContent = v.name;
+  v.img.style.visibility = 'hidden';
+  v.img.onload = () => { v.img.style.visibility = ''; photoViewerFit(); };
+  v.img.src = url;
+  v.prevOverflow = document.documentElement.style.overflow;
+  document.documentElement.style.overflow = 'hidden';
+  v.el.hidden = false;
+  if(v.img.complete && v.img.naturalWidth){ v.img.style.visibility = ''; photoViewerFit(); }
+  v.el.querySelector('[data-pv="close"]').focus({ preventScroll: true });
+}
+function closePhotoViewer(){
+  const v = photoViewer;
+  if(!v.el || v.el.hidden) return;
+  v.el.hidden = true;
+  v.pointers.clear();
+  v.pinch = null;
+  document.documentElement.style.overflow = v.prevOverflow || '';
+}
+
 async function resolveVisibleClientChatAttachments(container) {
   const els = Array.from((container || document.getElementById("chatMessages")).querySelectorAll('.chat-msg-attachment:not([data-resolved="1"])'));   // v704
   for (const el of els) {
@@ -9036,7 +9203,7 @@ async function resolveVisibleClientChatAttachments(container) {
     el.dataset.resolved = "1";   // v704: chatSwapHtml carries it across re-renders
     if (mime.startsWith("image/")) {
       el.innerHTML = `<img src="${url}" alt="${escapeHtml(name)}">`;
-      el.querySelector("img").addEventListener("click", () => window.open(url, "_blank"));
+      el.querySelector("img").addEventListener("click", () => openPhotoViewer(url, name));   // v716: pop-up viewer, not a new tab
     } else if (mime.startsWith("audio/")) {
       el.className = "chat-msg-attachment chat-msg-audio";
       // v205: controlsList="nodownload" hides the native player's own
