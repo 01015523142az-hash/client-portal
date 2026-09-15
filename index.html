@@ -2209,6 +2209,14 @@
       <input type="email" id="skiptraceSignupEmail" required autocomplete="email">
       <label for="skiptraceSignupPhone">Mobile number</label>
       <input type="tel" id="skiptraceSignupPhone" required autocomplete="tel">
+      <!-- v731: SMS consent. UNTICKED and OPTIONAL on purpose -- carriers
+           refuse a signup where agreeing to texts is required, and the 10DLC
+           filing says consent is not a condition of purchase. The wording is
+           read out of this span and stored with the tick. -->
+      <label style="display:flex; gap:8px; align-items:flex-start; font-weight:400; font-size:12px; line-height:1.45; margin-top:12px;">
+        <input type="checkbox" id="skiptraceSignupSmsConsent" style="width:auto; margin-top:2px; flex-shrink:0;">
+        <span id="skiptraceSignupSmsConsentText">Text me account notifications. I agree to receive text messages from PropTech AI at my mobile number about my client account, for example a ticket to review, new activity in my portal, a payment issue, or a file ready to download. Consent is not a condition of purchase. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. We will not sell or share your mobile information with third parties for marketing or promotional purposes. See our <a href="https://www.proptechnologyai.com/privacy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://www.proptechnologyai.com/terms" target="_blank" rel="noopener">Terms</a>.</span>
+      </label>
       <label for="skiptraceSignupPassword">Password</label>
       <input type="password" id="skiptraceSignupPassword" required autocomplete="new-password" minlength="8">
       <label for="skiptraceSignupConfirmPassword">Confirm password</label>
@@ -3623,7 +3631,14 @@ document.getElementById("skiptraceSignupForm").addEventListener("submit", async 
   btn.disabled = true;
   btn.textContent = "Creating account…";
   const { data, error } = await sb.functions.invoke("public-skiptrace", {
-    body: { action: "client_signup", email, password, full_name, phone },
+    body: {
+      action: "client_signup", email, password, full_name, phone,
+      // v731: the optional SMS consent, with the exact wording on screen.
+      sms_consent: document.getElementById("skiptraceSignupSmsConsent").checked,
+      consent_text: document.getElementById("skiptraceSignupSmsConsent").checked
+        ? document.getElementById("skiptraceSignupSmsConsentText").textContent.replace(/\s+/g, " ").trim() : null,
+      source_url: window.location.href.split("?")[0],
+    },
   });
   if (error || !data || data.ok === false) {
     btn.disabled = false;
@@ -6596,6 +6611,64 @@ function closeNotifPrefsModal() {
   document.getElementById("notifPrefsModalOverlay").classList.remove("show");
   document.getElementById("notifPrefsModalBox").innerHTML = "";
 }
+// v731: TEXT MESSAGES ARE OPT-IN. The switch at the top of the bell's
+// Settings, and the same unticked box at signup, are the only way a client
+// starts getting texts -- send-client-sms refuses without it
+// (client_sms_consented). Ticking records the consent with the exact wording
+// on screen and sends a confirmation text; unticking records the opt-out.
+// Both happen the moment the box changes, not on Save. client-sms-consent does
+// the work, because clients cannot write the consent ledger themselves.
+const CLIENT_SMS_CONSENT_HTML = `Text me account notifications. I agree to receive text messages from PropTech AI at my mobile number about my client account, for example a ticket to review, new activity in my portal, a payment issue, or a file ready to download. Consent is not a condition of purchase. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. We will not sell or share your mobile information with third parties for marketing or promotional purposes. See our <a href="https://www.proptechnologyai.com/privacy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://www.proptechnologyai.com/terms" target="_blank" rel="noopener">Terms</a>.`;   // keep in step with the signup box
+async function renderSmsConsentBox() {
+  const box = document.getElementById("smsConsentBox");
+  if (!box) return;
+  let st = null;
+  try {
+    const { data, error } = await sb.functions.invoke("client-sms-consent", { body: { action: "status" } });
+    if (!error && data && data.ok) st = data;
+  } catch (e) { /* shown below */ }
+  if (!st) { box.textContent = "Text message settings could not be loaded right now."; return; }
+  if (!st.phone) {
+    box.innerHTML = `<div style="font-weight:600; font-size:13px; color:var(--text); margin-bottom:4px;">Text messages</div>There is no mobile number on your account, so we cannot text you. Ask our team to add one.`;
+    return;
+  }
+  box.innerHTML = `
+    <div style="font-weight:600; font-size:13px; color:var(--text); margin-bottom:6px;">Text messages to ${escapeHtml(st.phone_display || st.phone)}</div>
+    <label style="display:flex; gap:8px; align-items:flex-start; font-size:12px; font-weight:400; line-height:1.45; color:var(--text-2);">
+      <input type="checkbox" id="smsConsentCb" style="width:auto; margin-top:2px; flex-shrink:0;" ${st.subscribed ? "checked" : ""}>
+      <span id="smsConsentText">${CLIENT_SMS_CONSENT_HTML}</span>
+    </label>
+    <div class="msg" id="smsConsentMsg" style="margin-top:6px;"></div>`;
+  const cb = document.getElementById("smsConsentCb");
+  const msg = document.getElementById("smsConsentMsg");
+  if (st.suppressed && !st.subscribed) msg.textContent = "This number texted STOP to us earlier. Text START to our notification number to allow texts again.";
+  cb.addEventListener("change", async () => {
+    const granted = cb.checked;
+    cb.disabled = true;
+    msg.textContent = "Saving…";
+    msg.className = "msg";
+    let r = null;
+    try {
+      const { data, error } = await sb.functions.invoke("client-sms-consent", { body: {
+        action: "set", granted,
+        consent_text: granted ? document.getElementById("smsConsentText").textContent.replace(/\s+/g, " ").trim() : null,
+        source_url: window.location.href.split("?")[0],
+      } });
+      if (!error && data) r = data;
+    } catch (e) { /* shown below */ }
+    cb.disabled = false;
+    if (!r || !r.ok) {
+      cb.checked = !granted;
+      msg.textContent = (r && r.error) || "Could not save your choice — please try again.";
+      msg.className = "msg error";
+      return;
+    }
+    msg.textContent = r.note || (granted
+      ? (r.confirmation_sent ? "Text notifications are on — we just sent you a confirmation text." : "Text notifications are on.")
+      : "Text notifications are off. We will not text you.");
+  });
+}
+
 async function openNotifPrefsModal() {
   document.getElementById("notifCenterPanel").style.display = "none";
   const box = document.getElementById("notifPrefsModalBox");
@@ -6612,6 +6685,7 @@ async function openNotifPrefsModal() {
   box.innerHTML = `
     <div class="modal-title">Notification settings</div>
     <div class="modal-sub">Choose how you're notified for each activity — anything you change here applies only to your account, never to any other client.</div>
+    <div id="smsConsentBox" style="padding:12px; border:1px solid var(--border-light); border-radius:10px; margin:10px 0 6px; font-size:12px; color:var(--text-2);">Loading text message settings…</div>
     <div id="notifPrefsRows"></div>
     <div class="msg" id="notifPrefsMsg"></div>
     <div class="modal-actions">
@@ -6641,6 +6715,7 @@ async function openNotifPrefsModal() {
     `;
   }).join("");
 
+  renderSmsConsentBox();   // v731
   rowsEl.querySelectorAll(".notif-pref-reset-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await sb.from("client_notif_prefs").delete().eq("client_id", currentClient.id).eq("kind", btn.dataset.kind);
