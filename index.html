@@ -3236,29 +3236,6 @@ document.querySelectorAll('.theme-toggle-btn').forEach(b => b.addEventListener('
 applyThemeIcon();
 
 // ---------------------------------------------------------------------------
-// boot
-// ---------------------------------------------------------------------------
-init();
-
-// v104: forces the auth-card entrance animation to actually restart,
-// rather than relying on the browser to catch it on first paint (which
-// can silently race with web-font/stylesheet loading in some browsers —
-// if the element is already laid out by the time the animation's
-// keyframes are registered, it can just... not play, with zero error).
-// Removing the class then reading offsetWidth forces a synchronous
-// reflow, so re-adding the class inside requestAnimationFrame is
-// guaranteed to start the animation fresh every time this runs.
-function playAuthCardEntrance(screenEl){
-  const card = screenEl && screenEl.querySelector(".auth-card");
-  if(!card) return;
-  card.classList.remove("auth-card-in");
-  void card.offsetWidth;
-  requestAnimationFrame(() => card.classList.add("auth-card-in"));
-}
-
-let isStaffImpersonating = false;
-
-// ---------------------------------------------------------------------------
 // v748: a client session ends after 4 HOURS OF INACTIVITY -- the same rule the
 // staff portal has (its IDLE_TIMEOUT_MS). A refresh inside those four hours
 // still restores the session (the v333 behaviour): the stamp lives in
@@ -3301,6 +3278,29 @@ async function idleSignOut() {
 setInterval(() => {
   if (currentClient && idleMsElapsed() >= IDLE_TIMEOUT_MS) idleSignOut();
 }, 60000);
+
+// ---------------------------------------------------------------------------
+// boot
+// ---------------------------------------------------------------------------
+init();
+
+// v104: forces the auth-card entrance animation to actually restart,
+// rather than relying on the browser to catch it on first paint (which
+// can silently race with web-font/stylesheet loading in some browsers —
+// if the element is already laid out by the time the animation's
+// keyframes are registered, it can just... not play, with zero error).
+// Removing the class then reading offsetWidth forces a synchronous
+// reflow, so re-adding the class inside requestAnimationFrame is
+// guaranteed to start the animation fresh every time this runs.
+function playAuthCardEntrance(screenEl){
+  const card = screenEl && screenEl.querySelector(".auth-card");
+  if(!card) return;
+  card.classList.remove("auth-card-in");
+  void card.offsetWidth;
+  requestAnimationFrame(() => card.classList.add("auth-card-in"));
+}
+
+let isStaffImpersonating = false;
 
 async function init() {
   // v334: loginScreen used to be visible by default (unhidden in the raw
