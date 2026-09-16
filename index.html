@@ -6195,6 +6195,19 @@ async function openCreateCampaignModal() {
     </div>
     <div style="font-size:11px; color:var(--text-2); margin-top:2px;">If you'll provide your own data, plan on supplying roughly <span class="camp-data-records">${CAMP_DATA_RECORDS_BY_TIER.full_time.toLocaleString()}</span> records per month for the caller to work.</div>
     <div id="campPriceTotal" style="font-weight:700; font-size:13px; margin-top:12px; color:var(--text);"></div>
+    <!-- v762: Email Marketing is free with a Full-time caller on our data.
+         Shown the moment that pair is picked, while the client is still
+         choosing, so the included value is part of the decision rather than
+         a surprise afterwards. Deliberately no placeholder syntax in here --
+         this block sits inside a template literal. -->
+    <div id="campEmailBonus" class="hidden" style="margin-top:12px; padding:12px 14px; border-radius:10px; border:1px solid var(--success); background:var(--success-dim);">
+      <div style="font-weight:800; font-size:13px; color:var(--success);">&#127881; Congratulations &mdash; you have unlocked Email Marketing</div>
+      <div style="font-size:12px; color:var(--text-2); margin-top:5px; line-height:1.55;">
+        A Full-time caller on our data includes <b>10,000 marketing emails every month, free</b>
+        &mdash; that is one seat. The Email Marketing tab switches on once this campaign is active
+        and your sending domain, sending address and email design are set up.
+      </div>
+    </div>
     <div style="font-size:11px; color:var(--text-2); margin-top:4px;">Your caller will start <strong>${campNextBusinessDayLabel()}</strong> — we extend your first billing cycle by that same gap, so this charge still covers a full month of active service.</div>
 
     <div style="font-weight:700; font-size:12px; margin:16px 0 8px; color:var(--text-2); text-transform:uppercase; letter-spacing:.5px;">Data Order</div>
@@ -6327,6 +6340,15 @@ function updateCampPriceTotal() {
   const dataPrice = Math.round(records * CAMP_DATA_PRICE_PER_RECORD);
   document.querySelectorAll(".camp-data-records").forEach((span) => { span.textContent = records.toLocaleString(); });
   document.querySelectorAll(".camp-data-price").forEach((span) => { span.textContent = dataPrice.toLocaleString(); });
+  // v762: the Full-time + Our data pair is exactly one Email Marketing seat
+  // (10,000 emails a month, free). This runs from the same delegated change
+  // listener as the price total, so it re-evaluates on every radio click --
+  // including back OFF the pair, which hides it again.
+  const bonus = document.getElementById("campEmailBonus");
+  if (bonus) {
+    const earned = tier === "full_time" && checkedRadioValue("campDataChoice") === "ours";
+    bonus.classList.toggle("hidden", !earned);
+  }
   if (!tier) { el.textContent = ""; return; }
   let total = CAMP_CALLER_TIER_PRICE[tier] || 0;
   if (checkedRadioValue("campDialerChoice") === "ours") total += CAMP_DIALER_PRICE;
