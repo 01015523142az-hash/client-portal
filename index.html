@@ -2852,6 +2852,11 @@
         <div class="panel-title">Your sending domain</div>
         <div id="mkDomainBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
       </div>
+
+      <div class="panel">
+        <div class="panel-title">Your lists</div>
+        <div id="mkListsBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
+      </div>
     </section>
 
     <section id="tab-profile" class="hidden">
@@ -3411,6 +3416,236 @@ function mkRender() {
 // supply it rather than discovered later by a bounce.
 // ---------------------------------------------------------------------------
 let mkSenders = [];
+// ---------------------------------------------------------------------------
+// v755: AUDIENCES AND BULK UPLOAD.
+//
+// A CSV is parsed in the browser and sent as rows, so there is no file upload
+// to handle and the person sees their own columns before anything is stored.
+//
+// Every row is accounted for in the result -- imported, already on the list,
+// duplicated in the file, blank, invalid, or suppressed. A bare "1,000
+// imported" when 400 were silently dropped is how people stop trusting a tool.
+// ---------------------------------------------------------------------------
+let mkAudiences = [];
+let mkCsv = null;               // { headers: [], rows: [[]] }
+
+// Small CSV reader: quoted fields, escaped quotes, commas and newlines inside
+// quotes. Enough for spreadsheet exports, which is what these always are.
+function mkParseCsv(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  const s = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+      } else { field += c; }
+    } else if (c === '"') { inQuotes = true; }
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else { field += c; }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((v) => String(v).trim() !== ""));
+}
+
+// Guess which column is which, so the common case needs no thought.
+function mkGuessColumn(headers, kind) {
+  const want = {
+    email: ["email", "e-mail", "email address", "emailaddress", "mail"],
+    first_name: ["first name", "firstname", "first", "given name", "fname"],
+    last_name: ["last name", "lastname", "last", "surname", "lname"],
+    company: ["company", "business", "organisation", "organization", "company name"],
+  }[kind] || [];
+  const norm = headers.map((h) => String(h).trim().toLowerCase());
+  for (const w of want) { const i = norm.indexOf(w); if (i >= 0) return i; }
+  for (let i = 0; i < norm.length; i++) if (want.some((w) => norm[i].includes(w))) return i;
+  return -1;
+}
+
+function mkColumnSelect(id, headers, selected) {
+  return `<select id="${id}">
+    <option value="-1">— none —</option>
+    ${headers.map((h, i) => `<option value="${i}"${i === selected ? " selected" : ""}>${escapeHtml(h || ("Column " + (i + 1)))}</option>`).join("")}
+  </select>`;
+}
+
+function mkListsRender() {
+  const box = document.getElementById("mkListsBody");
+  if (!box) return;
+  const rows = mkAudiences.length
+    ? mkAudiences.map((a) => `<tr>
+        <td style="padding:7px 10px 7px 0;"><b>${escapeHtml(a.name)}</b>
+          <div style="font-size:11px; color:var(--text-2);">${escapeHtml(a.source || "")}</div></td>
+        <td style="padding:7px 10px 7px 0; font-family:var(--mono);">${Number(a.contact_count).toLocaleString()}</td>
+        <td style="padding:7px 0; text-align:right;">
+          <button class="btn-ghost" data-upload-to="${escapeHtml(a.id)}" style="font-size:11px; padding:3px 9px;">Upload CSV</button>
+          <button class="btn-ghost" data-del-list="${escapeHtml(a.id)}" data-name="${escapeHtml(a.name)}" style="font-size:11px; padding:3px 9px;">Delete</button>
+        </td></tr>`).join("")
+    : `<tr><td colspan="3" style="padding:8px 0; color:var(--text-2); font-size:12px;">No lists yet.</td></tr>`;
+
+  box.innerHTML = `
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px; min-width:420px;">
+        <thead><tr style="text-align:left; color:var(--text-2); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;">
+          <th style="padding:0 10px 6px 0;">List</th><th style="padding:0 10px 6px 0;">Contacts</th><th></th>
+        </tr></thead><tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div id="mkUploadArea" style="margin-top:16px;"></div>
+    <div style="margin-top:18px; padding:14px; border:1px solid var(--border); border-radius:8px;">
+      <div style="font-size:12.5px; font-weight:700; margin-bottom:10px;">New list</div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <div style="flex:1 1 180px;"><label for="mkListName">Name</label>
+          <input type="text" id="mkListName" placeholder="Chicago investors – Sept"></div>
+        <div style="flex:1 1 220px;"><label for="mkListSource">Where did it come from?</label>
+          <input type="text" id="mkListSource" placeholder="Conference sign-up sheet, Sept 2026"></div>
+      </div>
+      <div style="font-size:11px; color:var(--text-2); margin-top:4px; line-height:1.5;">
+        Whether a list is legal to email depends on where it came from &mdash; and nobody remembers six months later.
+      </div>
+      <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn-primary" id="mkListCreateBtn">Create list</button>
+        <span id="mkListMsg" style="font-size:12px; color:var(--text-2);"></span>
+      </div>
+    </div>`;
+
+  const cb = document.getElementById("mkListCreateBtn");
+  if (cb) cb.addEventListener("click", mkCreateList);
+  box.querySelectorAll("[data-upload-to]").forEach((b) =>
+    b.addEventListener("click", () => mkShowUpload(b.dataset.uploadTo)));
+  box.querySelectorAll("[data-del-list]").forEach((b) =>
+    b.addEventListener("click", () => mkDeleteList(b.dataset.delList, b.dataset.name)));
+}
+
+function mkShowUpload(audienceId) {
+  mkCsv = null;
+  const area = document.getElementById("mkUploadArea");
+  const a = mkAudiences.find((x) => x.id === audienceId);
+  area.innerHTML = `
+    <div style="padding:14px; border:1px solid var(--focus); border-radius:8px;">
+      <div style="font-size:12.5px; font-weight:700; margin-bottom:8px;">Upload contacts into “${escapeHtml(a ? a.name : "")}”</div>
+      <div style="font-size:11.5px; color:var(--text-2); margin-bottom:10px; line-height:1.5;">
+        A CSV with a header row. Anyone who has unsubscribed, bounced or complained is skipped automatically,
+        and uploading the same file twice is harmless.
+      </div>
+      <input type="file" id="mkCsvFile" accept=".csv,text/csv">
+      <div id="mkMapArea" style="margin-top:12px;"></div>
+      <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn-primary" id="mkImportBtn" data-id="${escapeHtml(audienceId)}" disabled>Import</button>
+        <button class="btn-ghost" id="mkCancelUpload">Cancel</button>
+        <span id="mkImportMsg" style="font-size:12px; color:var(--text-2);"></span>
+      </div>
+      <div id="mkImportResult" style="margin-top:12px;"></div>
+    </div>`;
+  document.getElementById("mkCsvFile").addEventListener("change", mkFilePicked);
+  document.getElementById("mkCancelUpload").addEventListener("click", () => { area.innerHTML = ""; });
+  document.getElementById("mkImportBtn").addEventListener("click", (e) => mkRunImport(e.target.dataset.id));
+}
+
+function mkFilePicked(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const all = mkParseCsv(reader.result);
+    if (all.length < 2) {
+      document.getElementById("mkMapArea").innerHTML =
+        `<div style="font-size:12px; color:var(--danger);">That file has no data rows under its header.</div>`;
+      return;
+    }
+    mkCsv = { headers: all[0], rows: all.slice(1) };
+    const h = mkCsv.headers;
+    document.getElementById("mkMapArea").innerHTML = `
+      <div style="font-size:12px; margin-bottom:8px;">${mkCsv.rows.length.toLocaleString()} rows found. Which column is which?</div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:12px;">
+        <div><label for="mkColEmail">Email *</label>${mkColumnSelect("mkColEmail", h, mkGuessColumn(h, "email"))}</div>
+        <div><label for="mkColFirst">First name</label>${mkColumnSelect("mkColFirst", h, mkGuessColumn(h, "first_name"))}</div>
+        <div><label for="mkColLast">Last name</label>${mkColumnSelect("mkColLast", h, mkGuessColumn(h, "last_name"))}</div>
+        <div><label for="mkColCompany">Company</label>${mkColumnSelect("mkColCompany", h, mkGuessColumn(h, "company"))}</div>
+      </div>`;
+    document.getElementById("mkImportBtn").disabled = false;
+  };
+  reader.readAsText(file);
+}
+
+async function mkRunImport(audienceId) {
+  const emailCol = Number(document.getElementById("mkColEmail").value);
+  const msg = document.getElementById("mkImportMsg");
+  const btn = document.getElementById("mkImportBtn");
+  if (emailCol < 0) { msg.style.color = "var(--danger)"; msg.textContent = "Pick the email column."; return; }
+  const cols = {
+    first_name: Number(document.getElementById("mkColFirst").value),
+    last_name: Number(document.getElementById("mkColLast").value),
+    company: Number(document.getElementById("mkColCompany").value),
+  };
+  const rows = mkCsv.rows.map((r) => ({
+    email: r[emailCol],
+    first_name: cols.first_name >= 0 ? r[cols.first_name] : "",
+    last_name: cols.last_name >= 0 ? r[cols.last_name] : "",
+    company: cols.company >= 0 ? r[cols.company] : "",
+  }));
+
+  btn.disabled = true;
+  const totals = { received: 0, imported: 0, already_on_list: 0, duplicates_in_file: 0, blank: 0, invalid: 0, suppressed: 0 };
+  try {
+    // Chunked: the function caps each call, and a big list should show progress
+    // rather than appear to hang.
+    for (let i = 0; i < rows.length; i += 2000) {
+      msg.style.color = "var(--text-2)";
+      msg.textContent = `Importing ${Math.min(i + 2000, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}…`;
+      const r = await mkCall("contacts_import", { audience_id: audienceId, rows: rows.slice(i, i + 2000) });
+      for (const k of Object.keys(totals)) totals[k] += Number(r[k] || 0);
+    }
+    msg.textContent = "";
+    document.getElementById("mkImportResult").innerHTML = `
+      <div style="font-size:12.5px; line-height:1.7;">
+        <b style="color:var(--success);">${totals.imported.toLocaleString()} imported.</b><br>
+        ${totals.already_on_list ? `${totals.already_on_list.toLocaleString()} were already on this list.<br>` : ""}
+        ${totals.duplicates_in_file ? `${totals.duplicates_in_file.toLocaleString()} appeared more than once in the file.<br>` : ""}
+        ${totals.suppressed ? `<span style="color:#E38B2E;">${totals.suppressed.toLocaleString()} skipped — they unsubscribed, bounced or complained.</span><br>` : ""}
+        ${totals.invalid ? `<span style="color:var(--danger);">${totals.invalid.toLocaleString()} were not valid email addresses.</span><br>` : ""}
+        ${totals.blank ? `${totals.blank.toLocaleString()} rows had no email.<br>` : ""}
+      </div>`;
+    await loadMarketingTab();
+  } catch (e) {
+    msg.style.color = "var(--danger)";
+    msg.textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+async function mkCreateList() {
+  const msg = document.getElementById("mkListMsg");
+  const btn = document.getElementById("mkListCreateBtn");
+  btn.disabled = true;
+  msg.style.color = "var(--text-2)";
+  msg.textContent = "Creating…";
+  try {
+    await mkCall("audience_create", {
+      name: document.getElementById("mkListName").value,
+      source: document.getElementById("mkListSource").value,
+    }, "marketing-audiences");
+    await loadMarketingTab();
+  } catch (e) {
+    msg.style.color = "var(--danger)";
+    msg.textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+async function mkDeleteList(id, name) {
+  if (!window.confirm(`Delete the list “${name}” and all its contacts?`)) return;
+  try {
+    await mkCall("audience_delete", { id, confirm: true }, "marketing-audiences");
+    await loadMarketingTab();
+  } catch (e) {
+    const m = document.getElementById("mkListMsg");
+    if (m) { m.style.color = "var(--danger)"; m.textContent = e.message; }
+  }
+}
+
 
 function mkSenderRows(d) {
   if (!mkSenders.length) {
@@ -3540,8 +3775,12 @@ async function mkDisconnect(id, domain) {
   }
 }
 
-async function mkCall(action, payload) {
-  const { data, error } = await sb.functions.invoke("marketing-domains", { body: { action, ...payload } });
+// v755: two functions behind one caller. Audience actions live in
+// marketing-audiences, domain and sender actions in marketing-domains.
+const MK_AUDIENCE_ACTIONS = ["audience_list", "audience_create", "audience_delete", "contacts_import"];
+async function mkCall(action, payload, fnOverride) {
+  const fn = fnOverride || (MK_AUDIENCE_ACTIONS.includes(action) ? "marketing-audiences" : "marketing-domains");
+  const { data, error } = await sb.functions.invoke(fn, { body: { action, ...payload } });
   if (error || !data || data.ok === false) {
     throw new Error(await skiptraceInvokeErrorMessage(error, data));
   }
@@ -3562,6 +3801,9 @@ async function loadMarketingTab() {
       mkSenders = [];
     }
     mkRender();
+    const a = await mkCall("audience_list", {});
+    mkAudiences = a.audiences || [];
+    mkListsRender();
   } catch (e) {
     if (box) box.innerHTML = `<div style="font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
   }
