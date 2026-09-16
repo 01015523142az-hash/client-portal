@@ -2293,9 +2293,17 @@
              moved here from Skip Tracing, plus new Transaction History /
              Payment Method subtabs), same .leads-side-subnav pattern as
              Leads/Buy a list/Skip Tracing above. -->
-        <div class="nav-section-label">Marketing</div>
-        <div class="side-nav-group">
+        <!-- v757: Email Marketing is shown only to a client with a seat -- a
+             Full-time caller on our data, or seats added by staff. Hidden
+             until marketing_access() says so (refreshMarketingNav). -->
+        <div class="nav-section-label" id="marketingNavLabel" style="display:none;">Marketing</div>
+        <div class="side-nav-group" id="marketingNavGroup" style="display:none;">
           <button data-tab="marketing" id="marketingNavBtn"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 5.5h15v9a1 1 0 01-1 1h-13a1 1 0 01-1-1z"></path><path d="M2.5 6l7.5 5 7.5-5"></path></svg>Email Marketing</button>
+          <div class="leads-side-subnav" id="marketingSideSubNav">
+            <button class="leads-side-subtab-btn active" data-marketing-subtab="setup">Setup</button>
+            <button class="leads-side-subtab-btn" data-marketing-subtab="lists">Lists</button>
+            <button class="leads-side-subtab-btn" data-marketing-subtab="inbox">Email Inbox</button>
+          </div>
         </div>
         <div class="nav-section-label">Account</div>
         <div class="side-nav-group">
@@ -2848,14 +2856,38 @@
         <div style="font-size:13px; color:var(--text-2); margin-top:6px; line-height:1.5;">Send campaigns from your own domain, so they arrive as you &mdash; not as us on your behalf.</div>
       </div>
 
-      <div class="panel">
-        <div class="panel-title">Your sending domain</div>
-        <div id="mkDomainBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
+      <div id="mkAllowance"></div>
+
+      <!-- v757: setup is mandatory and in order -- domain, sending address,
+           email design. Lists and the inbox open once all three are done. -->
+      <div id="marketingSubtab-setup">
+        <div id="mkSteps"></div>
+        <div class="panel">
+          <div class="panel-title">Step 1 &middot; Your sending domain</div>
+          <div id="mkDomainBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Step 2 &middot; Your sending address</div>
+          <div id="mkSenderBody"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Step 3 &middot; Your email design</div>
+          <div id="mkTemplateBody"></div>
+        </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-title">Your lists</div>
-        <div id="mkListsBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
+      <div id="marketingSubtab-lists" class="hidden">
+        <div class="panel">
+          <div class="panel-title">Your lists</div>
+          <div id="mkListsBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
+        </div>
+      </div>
+
+      <div id="marketingSubtab-inbox" class="hidden">
+        <div class="panel">
+          <div class="panel-title">Email Inbox</div>
+          <div id="mkInboxBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
+        </div>
       </div>
     </section>
 
@@ -3362,7 +3394,6 @@ function mkRenderDomain(d) {
         : `<button class="btn-primary" id="mkCheckBtn" data-id="${escapeHtml(d.id)}">Check DNS</button>`}
       <span id="mkCheckMsg" style="font-size:12px; color:var(--text-2);"></span>
     </div>
-    ${ready ? mkSendersSection(d) : ""}
     ${d.last_checked_at ? `<div style="font-size:11px; color:var(--text-2); margin-top:8px;">Last checked ${new Date(d.last_checked_at).toLocaleString()}</div>` : ""}
     ${d.last_error ? `<div style="font-size:11.5px; color:var(--danger); margin-top:8px;">${escapeHtml(d.last_error)}</div>` : ""}`;
 }
@@ -3395,11 +3426,25 @@ function mkRender() {
   if (checkBtn) checkBtn.addEventListener("click", () => mkCheck(checkBtn.dataset.id));
   const discBtn = document.getElementById("mkDisconnectBtn");
   if (discBtn) discBtn.addEventListener("click", () => mkDisconnect(discBtn.dataset.id, discBtn.dataset.domain));
+  // v757: the sending address is its own step, and only once a domain is
+  // verified -- an address on an unverified domain would bounce.
+  const senderBox = document.getElementById("mkSenderBody");
+  if (senderBox) {
+    const usable = mkDomains.find((d) => d.usable_for_sending);
+    senderBox.innerHTML = usable
+      ? mkSendersSection(usable)
+      : mkLockedHtml("Finish step 1 first. Your domain has to be verified before you can add an address to send from.");
+  }
   const saveBtn = document.getElementById("mkSenderSaveBtn");
   if (saveBtn) saveBtn.addEventListener("click", () => mkSaveSender(saveBtn.dataset.domainId));
-  box.querySelectorAll("[data-del-sender]").forEach((b) => {
+  document.querySelectorAll("#mkSenderBody [data-del-sender]").forEach((b) => {
     b.addEventListener("click", () => mkDeleteSender(b.dataset.delSender));
   });
+}
+
+function mkLockedHtml(text) {
+  return `<div style="font-size:12.5px; color:var(--text-2); line-height:1.55; display:flex; gap:8px; align-items:flex-start;">
+    <span aria-hidden="true">&#128274;</span><span>${text}</span></div>`;
 }
 
 
@@ -3417,233 +3462,42 @@ function mkRender() {
 // ---------------------------------------------------------------------------
 let mkSenders = [];
 // ---------------------------------------------------------------------------
-// v755: AUDIENCES AND BULK UPLOAD.
-//
-// A CSV is parsed in the browser and sent as rows, so there is no file upload
-// to handle and the person sees their own columns before anything is stored.
-//
-// Every row is accounted for in the result -- imported, already on the list,
-// duplicated in the file, blank, invalid, or suppressed. A bare "1,000
-// imported" when 400 were silently dropped is how people stop trusting a tool.
+// v757: LISTS ARE READ-ONLY HERE. The PropTech AI team uploads a client's
+// lists from the staff portal, and only once setup is finished. The client
+// sees what is on file -- name, where it came from, how many contacts.
+// (v755's in-portal CSV upload was removed at the owner's request.)
 // ---------------------------------------------------------------------------
 let mkAudiences = [];
-let mkCsv = null;               // { headers: [], rows: [[]] }
-
-// Small CSV reader: quoted fields, escaped quotes, commas and newlines inside
-// quotes. Enough for spreadsheet exports, which is what these always are.
-function mkParseCsv(text) {
-  const rows = [];
-  let row = [], field = "", inQuotes = false;
-  const s = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (s[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
-      } else { field += c; }
-    } else if (c === '"') { inQuotes = true; }
-    else if (c === ",") { row.push(field); field = ""; }
-    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-    else { field += c; }
-  }
-  if (field.length || row.length) { row.push(field); rows.push(row); }
-  return rows.filter((r) => r.some((v) => String(v).trim() !== ""));
-}
-
-// Guess which column is which, so the common case needs no thought.
-function mkGuessColumn(headers, kind) {
-  const want = {
-    email: ["email", "e-mail", "email address", "emailaddress", "mail"],
-    first_name: ["first name", "firstname", "first", "given name", "fname"],
-    last_name: ["last name", "lastname", "last", "surname", "lname"],
-    company: ["company", "business", "organisation", "organization", "company name"],
-  }[kind] || [];
-  const norm = headers.map((h) => String(h).trim().toLowerCase());
-  for (const w of want) { const i = norm.indexOf(w); if (i >= 0) return i; }
-  for (let i = 0; i < norm.length; i++) if (want.some((w) => norm[i].includes(w))) return i;
-  return -1;
-}
-
-function mkColumnSelect(id, headers, selected) {
-  return `<select id="${id}">
-    <option value="-1">— none —</option>
-    ${headers.map((h, i) => `<option value="${i}"${i === selected ? " selected" : ""}>${escapeHtml(h || ("Column " + (i + 1)))}</option>`).join("")}
-  </select>`;
-}
 
 function mkListsRender() {
   const box = document.getElementById("mkListsBody");
   if (!box) return;
+  if (!mkAccess || !mkAccess.setup_complete) {
+    box.innerHTML = mkSetupFirstHtml("lists");
+    mkBindGoSetup(box);
+    return;
+  }
   const rows = mkAudiences.length
     ? mkAudiences.map((a) => `<tr>
-        <td style="padding:7px 10px 7px 0;"><b>${escapeHtml(a.name)}</b>
-          <div style="font-size:11px; color:var(--text-2);">${escapeHtml(a.source || "")}</div></td>
-        <td style="padding:7px 10px 7px 0; font-family:var(--mono);">${Number(a.contact_count).toLocaleString()}</td>
-        <td style="padding:7px 0; text-align:right;">
-          <button class="btn-ghost" data-upload-to="${escapeHtml(a.id)}" style="font-size:11px; padding:3px 9px;">Upload CSV</button>
-          <button class="btn-ghost" data-del-list="${escapeHtml(a.id)}" data-name="${escapeHtml(a.name)}" style="font-size:11px; padding:3px 9px;">Delete</button>
-        </td></tr>`).join("")
-    : `<tr><td colspan="3" style="padding:8px 0; color:var(--text-2); font-size:12px;">No lists yet.</td></tr>`;
-
+        <td style="padding:8px 10px 8px 0;"><b>${escapeHtml(a.name)}</b></td>
+        <td style="padding:8px 10px 8px 0; font-size:12px; color:var(--text-2);">${escapeHtml(a.source || "")}</td>
+        <td style="padding:8px 10px 8px 0; font-family:var(--mono);">${Number(a.contact_count).toLocaleString()}</td>
+        <td style="padding:8px 0; font-size:12px; color:var(--text-2); white-space:nowrap;">${a.created_at ? new Date(a.created_at).toLocaleDateString() : ""}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" style="padding:10px 0; color:var(--text-2); font-size:12.5px;">No lists yet. Your PropTech AI team will upload them for you.</td></tr>`;
   box.innerHTML = `
+    <div style="font-size:12.5px; color:var(--text-2); margin-bottom:14px; line-height:1.55;">
+      Your PropTech AI team uploads and manages your lists. Anyone who unsubscribes, bounces or
+      marks an email as spam is left off automatically.
+    </div>
     <div style="overflow-x:auto;">
-      <table style="width:100%; border-collapse:collapse; font-size:12.5px; min-width:420px;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px; min-width:460px;">
         <thead><tr style="text-align:left; color:var(--text-2); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;">
-          <th style="padding:0 10px 6px 0;">List</th><th style="padding:0 10px 6px 0;">Contacts</th><th></th>
+          <th style="padding:0 10px 6px 0;">List</th><th style="padding:0 10px 6px 0;">Where it came from</th>
+          <th style="padding:0 10px 6px 0;">Contacts</th><th style="padding:0 0 6px;">Added</th>
         </tr></thead><tbody>${rows}</tbody>
       </table>
-    </div>
-    <div id="mkUploadArea" style="margin-top:16px;"></div>
-    <div style="margin-top:18px; padding:14px; border:1px solid var(--border); border-radius:8px;">
-      <div style="font-size:12.5px; font-weight:700; margin-bottom:10px;">New list</div>
-      <div style="display:flex; gap:12px; flex-wrap:wrap;">
-        <div style="flex:1 1 180px;"><label for="mkListName">Name</label>
-          <input type="text" id="mkListName" placeholder="Chicago investors – Sept"></div>
-        <div style="flex:1 1 220px;"><label for="mkListSource">Where did it come from?</label>
-          <input type="text" id="mkListSource" placeholder="Conference sign-up sheet, Sept 2026"></div>
-      </div>
-      <div style="font-size:11px; color:var(--text-2); margin-top:4px; line-height:1.5;">
-        Whether a list is legal to email depends on where it came from &mdash; and nobody remembers six months later.
-      </div>
-      <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button class="btn-primary" id="mkListCreateBtn">Create list</button>
-        <span id="mkListMsg" style="font-size:12px; color:var(--text-2);"></span>
-      </div>
     </div>`;
-
-  const cb = document.getElementById("mkListCreateBtn");
-  if (cb) cb.addEventListener("click", mkCreateList);
-  box.querySelectorAll("[data-upload-to]").forEach((b) =>
-    b.addEventListener("click", () => mkShowUpload(b.dataset.uploadTo)));
-  box.querySelectorAll("[data-del-list]").forEach((b) =>
-    b.addEventListener("click", () => mkDeleteList(b.dataset.delList, b.dataset.name)));
-}
-
-function mkShowUpload(audienceId) {
-  mkCsv = null;
-  const area = document.getElementById("mkUploadArea");
-  const a = mkAudiences.find((x) => x.id === audienceId);
-  area.innerHTML = `
-    <div style="padding:14px; border:1px solid var(--focus); border-radius:8px;">
-      <div style="font-size:12.5px; font-weight:700; margin-bottom:8px;">Upload contacts into “${escapeHtml(a ? a.name : "")}”</div>
-      <div style="font-size:11.5px; color:var(--text-2); margin-bottom:10px; line-height:1.5;">
-        A CSV with a header row. Anyone who has unsubscribed, bounced or complained is skipped automatically,
-        and uploading the same file twice is harmless.
-      </div>
-      <input type="file" id="mkCsvFile" accept=".csv,text/csv">
-      <div id="mkMapArea" style="margin-top:12px;"></div>
-      <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button class="btn-primary" id="mkImportBtn" data-id="${escapeHtml(audienceId)}" disabled>Import</button>
-        <button class="btn-ghost" id="mkCancelUpload">Cancel</button>
-        <span id="mkImportMsg" style="font-size:12px; color:var(--text-2);"></span>
-      </div>
-      <div id="mkImportResult" style="margin-top:12px;"></div>
-    </div>`;
-  document.getElementById("mkCsvFile").addEventListener("change", mkFilePicked);
-  document.getElementById("mkCancelUpload").addEventListener("click", () => { area.innerHTML = ""; });
-  document.getElementById("mkImportBtn").addEventListener("click", (e) => mkRunImport(e.target.dataset.id));
-}
-
-function mkFilePicked(ev) {
-  const file = ev.target.files && ev.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const all = mkParseCsv(reader.result);
-    if (all.length < 2) {
-      document.getElementById("mkMapArea").innerHTML =
-        `<div style="font-size:12px; color:var(--danger);">That file has no data rows under its header.</div>`;
-      return;
-    }
-    mkCsv = { headers: all[0], rows: all.slice(1) };
-    const h = mkCsv.headers;
-    document.getElementById("mkMapArea").innerHTML = `
-      <div style="font-size:12px; margin-bottom:8px;">${mkCsv.rows.length.toLocaleString()} rows found. Which column is which?</div>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:12px;">
-        <div><label for="mkColEmail">Email *</label>${mkColumnSelect("mkColEmail", h, mkGuessColumn(h, "email"))}</div>
-        <div><label for="mkColFirst">First name</label>${mkColumnSelect("mkColFirst", h, mkGuessColumn(h, "first_name"))}</div>
-        <div><label for="mkColLast">Last name</label>${mkColumnSelect("mkColLast", h, mkGuessColumn(h, "last_name"))}</div>
-        <div><label for="mkColCompany">Company</label>${mkColumnSelect("mkColCompany", h, mkGuessColumn(h, "company"))}</div>
-      </div>`;
-    document.getElementById("mkImportBtn").disabled = false;
-  };
-  reader.readAsText(file);
-}
-
-async function mkRunImport(audienceId) {
-  const emailCol = Number(document.getElementById("mkColEmail").value);
-  const msg = document.getElementById("mkImportMsg");
-  const btn = document.getElementById("mkImportBtn");
-  if (emailCol < 0) { msg.style.color = "var(--danger)"; msg.textContent = "Pick the email column."; return; }
-  const cols = {
-    first_name: Number(document.getElementById("mkColFirst").value),
-    last_name: Number(document.getElementById("mkColLast").value),
-    company: Number(document.getElementById("mkColCompany").value),
-  };
-  const rows = mkCsv.rows.map((r) => ({
-    email: r[emailCol],
-    first_name: cols.first_name >= 0 ? r[cols.first_name] : "",
-    last_name: cols.last_name >= 0 ? r[cols.last_name] : "",
-    company: cols.company >= 0 ? r[cols.company] : "",
-  }));
-
-  btn.disabled = true;
-  const totals = { received: 0, imported: 0, already_on_list: 0, duplicates_in_file: 0, blank: 0, invalid: 0, suppressed: 0 };
-  try {
-    // Chunked: the function caps each call, and a big list should show progress
-    // rather than appear to hang.
-    for (let i = 0; i < rows.length; i += 2000) {
-      msg.style.color = "var(--text-2)";
-      msg.textContent = `Importing ${Math.min(i + 2000, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}…`;
-      const r = await mkCall("contacts_import", { audience_id: audienceId, rows: rows.slice(i, i + 2000) });
-      for (const k of Object.keys(totals)) totals[k] += Number(r[k] || 0);
-    }
-    msg.textContent = "";
-    document.getElementById("mkImportResult").innerHTML = `
-      <div style="font-size:12.5px; line-height:1.7;">
-        <b style="color:var(--success);">${totals.imported.toLocaleString()} imported.</b><br>
-        ${totals.already_on_list ? `${totals.already_on_list.toLocaleString()} were already on this list.<br>` : ""}
-        ${totals.duplicates_in_file ? `${totals.duplicates_in_file.toLocaleString()} appeared more than once in the file.<br>` : ""}
-        ${totals.suppressed ? `<span style="color:#E38B2E;">${totals.suppressed.toLocaleString()} skipped — they unsubscribed, bounced or complained.</span><br>` : ""}
-        ${totals.invalid ? `<span style="color:var(--danger);">${totals.invalid.toLocaleString()} were not valid email addresses.</span><br>` : ""}
-        ${totals.blank ? `${totals.blank.toLocaleString()} rows had no email.<br>` : ""}
-      </div>`;
-    await loadMarketingTab();
-  } catch (e) {
-    msg.style.color = "var(--danger)";
-    msg.textContent = e.message;
-    btn.disabled = false;
-  }
-}
-
-async function mkCreateList() {
-  const msg = document.getElementById("mkListMsg");
-  const btn = document.getElementById("mkListCreateBtn");
-  btn.disabled = true;
-  msg.style.color = "var(--text-2)";
-  msg.textContent = "Creating…";
-  try {
-    await mkCall("audience_create", {
-      name: document.getElementById("mkListName").value,
-      source: document.getElementById("mkListSource").value,
-    }, "marketing-audiences");
-    await loadMarketingTab();
-  } catch (e) {
-    msg.style.color = "var(--danger)";
-    msg.textContent = e.message;
-    btn.disabled = false;
-  }
-}
-
-async function mkDeleteList(id, name) {
-  if (!window.confirm(`Delete the list “${name}” and all its contacts?`)) return;
-  try {
-    await mkCall("audience_delete", { id, confirm: true }, "marketing-audiences");
-    await loadMarketingTab();
-  } catch (e) {
-    const m = document.getElementById("mkListMsg");
-    if (m) { m.style.color = "var(--danger)"; m.textContent = e.message; }
-  }
 }
 
 
@@ -3666,12 +3520,11 @@ function mkSenderRows(d) {
 
 function mkSendersSection(d) {
   return `
-    <div style="margin-top:26px; padding-top:20px; border-top:1px solid var(--border);">
-      <div style="font-family:var(--display); font-size:15px; font-weight:700; margin-bottom:4px;">Sending addresses</div>
+    <div>
       <div style="font-size:12.5px; color:var(--text-2); margin-bottom:14px; line-height:1.55;">
         The address your campaigns are sent from. Anything before the @ works &mdash;
         <span style="font-family:var(--mono)">noreply@${escapeHtml(d.domain)}</span> is the usual choice
-        for bulk sending.
+        for bulk sending. Replies to it arrive in your <b>Email Inbox</b> here.
       </div>
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; font-size:12px; min-width:460px;">
@@ -3699,7 +3552,7 @@ function mkSendersSection(d) {
           </div>
         </div>
         <div style="margin-top:10px;">
-          <label for="mkReplyTo">Replies go to <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
+          <label for="mkReplyTo">Replies go to <span style="color:var(--text-2); font-weight:400;">(optional &mdash; leave blank so replies arrive in your Email Inbox here)</span></label>
           <input type="text" id="mkReplyTo" placeholder="you@yourcompany.com" autocapitalize="off" spellcheck="false">
         </div>
         <div style="margin-top:10px;">
@@ -3736,6 +3589,9 @@ async function mkSaveSender(domainId) {
       postal_address: document.getElementById("mkPostal").value,
       is_default: document.getElementById("mkIsDefault").checked,
     });
+    // v757: open the inbox for this address straight away, so a reply that
+    // arrives before anyone looks at the Email Inbox tab is still kept.
+    mkCall("inbox_list", {}).catch(() => {});
     await loadMarketingTab();
     const m = document.getElementById("mkSenderMsg");
     if (m) { m.style.color = "var(--success)"; m.textContent = `Saved — ${r.address}`; }
@@ -3777,9 +3633,16 @@ async function mkDisconnect(id, domain) {
 
 // v755: two functions behind one caller. Audience actions live in
 // marketing-audiences, domain and sender actions in marketing-domains.
-const MK_AUDIENCE_ACTIONS = ["audience_list", "audience_create", "audience_delete", "contacts_import"];
+// v757: templates and the inbox have functions of their own.
+const MK_AUDIENCE_ACTIONS = ["audience_list"];
+const MK_TEMPLATE_ACTIONS = ["template_get", "template_save", "logo_upload"];
+const MK_INBOX_ACTIONS = ["inbox_list", "messages_list", "thread_get", "message_mark", "reply"];
 async function mkCall(action, payload, fnOverride) {
-  const fn = fnOverride || (MK_AUDIENCE_ACTIONS.includes(action) ? "marketing-audiences" : "marketing-domains");
+  const fn = fnOverride
+    || (MK_AUDIENCE_ACTIONS.includes(action) ? "marketing-audiences"
+      : MK_TEMPLATE_ACTIONS.includes(action) ? "marketing-templates"
+      : MK_INBOX_ACTIONS.includes(action) ? "marketing-inbox"
+      : "marketing-domains");
   const { data, error } = await sb.functions.invoke(fn, { body: { action, ...payload } });
   if (error || !data || data.ok === false) {
     throw new Error(await skiptraceInvokeErrorMessage(error, data));
@@ -3791,6 +3654,9 @@ async function loadMarketingTab() {
   const box = document.getElementById("mkDomainBody");
   if (box) box.innerHTML = '<div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div>';
   try {
+    await mkLoadAccess();
+    mkRenderAllowance();
+    if (!mkAccess.has_access) { mkRenderNoAccess(); return; }
     const r = await mkCall("list", {});
     mkDomains = r.domains || [];
     // Only worth asking once a domain exists; a client with none has none.
@@ -3800,12 +3666,576 @@ async function loadMarketingTab() {
     } else {
       mkSenders = [];
     }
+    const t = await mkCall("template_get", {});
+    mkTemplate = t.template || null;
+    if (Array.isArray(t.fonts) && t.fonts.length) mkFonts = t.fonts;
     mkRender();
+    mkRenderTemplateStep();
+    mkRenderSteps();
     const a = await mkCall("audience_list", {});
     mkAudiences = a.audiences || [];
     mkListsRender();
+    const inboxPane = document.getElementById("marketingSubtab-inbox");
+    if (inboxPane && !inboxPane.classList.contains("hidden")) loadMkInbox();
   } catch (e) {
     if (box) box.innerHTML = `<div style="font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v757: ACCESS, ALLOWANCE AND THE MANDATORY SETUP ORDER.
+//
+// One seat = one Full-time caller on our data (or a seat staff added by hand)
+// = 10,000 marketing emails a calendar month, free. marketing_access() is the
+// single source for all of it, in both portals and in the edge functions.
+// `var`, not `let`: restoreClientPage() reads these, and showApp() can run
+// before this part of the script has been reached.
+// ---------------------------------------------------------------------------
+var mkAccess = null;
+var mkPendingRestore = null;
+var mkTemplate = null;
+var mkFonts = ["Arial", "Helvetica", "Georgia", "Verdana", "Tahoma", "Trebuchet MS", "Times New Roman"];
+
+async function mkLoadAccess() {
+  const { data, error } = await sb.rpc("marketing_access", { p_client: currentClient.id });
+  if (error) throw new Error(error.message);
+  mkAccess = data || null;
+  return mkAccess;
+}
+
+// Shows or hides the nav entry. Runs at sign-in and whenever a campaign
+// subscription changes, so buying (or cancelling) a seat takes effect live.
+async function refreshMarketingNav() {
+  try { await mkLoadAccess(); } catch (e) { return; }
+  const show = Boolean(mkAccess && mkAccess.has_access);
+  ["marketingNavLabel", "marketingNavGroup"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? "" : "none";
+  });
+  if (show && mkPendingRestore) {
+    const sub = mkPendingRestore;
+    mkPendingRestore = null;
+    navigateToClientTab("marketing", sub);
+  }
+  const btn = document.getElementById("marketingNavBtn");
+  if (btn && btn.classList.contains("active")) loadMarketingTab();
+}
+
+function mkRenderAllowance() {
+  const box = document.getElementById("mkAllowance");
+  if (!box) return;
+  const a = mkAccess;
+  if (!a || !a.has_access) { box.innerHTML = ""; return; }
+  const seatLine = [
+    a.paid_seats ? `${a.paid_seats} Full-time caller${a.paid_seats === 1 ? "" : "s"} on our data` : "",
+    a.extra_seats ? `${a.extra_seats} added by your team` : "",
+  ].filter(Boolean).join(" + ");
+  const stat = (label, value, sub) => `
+    <div style="flex:1 1 150px; min-width:0;">
+      <div style="font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:.06em;">${label}</div>
+      <div style="font-family:var(--display); font-size:22px; font-weight:800; margin-top:4px;">${value}</div>
+      ${sub ? `<div style="font-size:11.5px; color:var(--text-2); margin-top:2px;">${sub}</div>` : ""}
+    </div>`;
+  box.innerHTML = `
+    <div class="panel" style="display:flex; gap:18px; flex-wrap:wrap;">
+      ${stat("Seats", Number(a.seats).toLocaleString(), escapeHtml(seatLine))}
+      ${stat("Included each month", Number(a.monthly_limit).toLocaleString(), "10,000 emails per seat, free")}
+      ${stat("Sent this month", Number(a.sent_this_month).toLocaleString(), "")}
+      ${stat("Left this month", Number(a.remaining).toLocaleString(), a.sending_enabled ? "Resets on the 1st" : "Sending is paused on your account")}
+    </div>`;
+}
+
+function mkRenderNoAccess() {
+  const box = document.getElementById("mkDomainBody");
+  if (box) {
+    box.innerHTML = `
+      <div style="font-size:13px; line-height:1.6;">
+        Email Marketing comes with every <b>Full-time caller on our data</b> &mdash; 10,000 emails a month per seat, free.
+        Create a campaign with a Full-time caller and Our data to switch it on.
+      </div>
+      <button class="btn-primary" id="mkNoAccessCreateBtn" style="margin-top:12px;">+ Create Campaign</button>`;
+    const b = document.getElementById("mkNoAccessCreateBtn");
+    if (b) b.addEventListener("click", () => openCreateCampaignModal());
+  }
+  ["mkSteps", "mkSenderBody", "mkTemplateBody", "mkListsBody", "mkInboxBody"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = "";
+  });
+}
+
+function mkRenderSteps() {
+  const box = document.getElementById("mkSteps");
+  if (!box || !mkAccess) return;
+  const steps = [
+    ["Sending domain", mkAccess.domain_ready],
+    ["Sending address", mkAccess.sender_ready],
+    ["Email design", mkAccess.template_ready],
+  ];
+  const next = steps.findIndex((st) => !st[1]);
+  box.innerHTML = `
+    <div class="panel">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        ${steps.map((st, i) => `
+          <div style="display:flex; align-items:center; gap:8px; flex:1 1 150px; min-width:0;">
+            <span style="flex:none; width:26px; height:26px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+              font-family:var(--mono); font-size:12px; font-weight:700;
+              ${st[1] ? "background:var(--success); color:#fff;"
+                : i === next ? "border:2px solid var(--focus); color:var(--focus);"
+                : "border:1px solid var(--border); color:var(--text-2);"}">${st[1] ? "&#10003;" : i + 1}</span>
+            <span style="font-size:12.5px; font-weight:${i === next ? 700 : 500}; ${st[1] || i === next ? "" : "color:var(--text-2);"}">${st[0]}</span>
+          </div>`).join("")}
+      </div>
+      <div style="font-size:12.5px; margin-top:12px; line-height:1.55; ${mkAccess.setup_complete ? "color:var(--success);" : "color:var(--text-2);"}">
+        ${mkAccess.setup_complete
+          ? "Setup is complete. Your PropTech AI team can now upload your lists, and replies arrive in your Email Inbox."
+          : "All three steps are required, in order. Your team can upload your lists once they are done."}
+      </div>
+    </div>`;
+}
+
+function mkSetupFirstHtml(what) {
+  if (!mkAccess) return '<div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div>';
+  const missing = [
+    !mkAccess.domain_ready && "verify your sending domain",
+    !mkAccess.sender_ready && "add a sending address",
+    !mkAccess.template_ready && "design your email",
+  ].filter(Boolean);
+  return `${mkLockedHtml(`Finish setup first &mdash; ${what === "inbox" ? "your inbox opens" : "your lists appear here"}
+      once all three steps are done. Still to do: <b>${missing.join(", ")}</b>.`)}
+    <button class="btn-primary" data-mk-go-setup style="margin-top:12px;">Go to setup</button>`;
+}
+function mkBindGoSetup(root) {
+  root.querySelectorAll("[data-mk-go-setup]").forEach((b) =>
+    b.addEventListener("click", () => mkShowSubtab("setup")));
+}
+
+function mkShowSubtab(key) {
+  document.querySelectorAll("#marketingSideSubNav button[data-marketing-subtab]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.marketingSubtab === key));
+  ["setup", "lists", "inbox"].forEach((k) => {
+    const el = document.getElementById("marketingSubtab-" + k);
+    if (el) el.classList.toggle("hidden", k !== key);
+  });
+  if (key === "lists") mkListsRender();
+  if (key === "inbox") loadMkInbox();
+}
+
+// ---------------------------------------------------------------------------
+// v757: EMAIL DESIGN (setup step 3).
+//
+// Choices, not HTML: logo, colours, font, sign-off, footer. The preview is the
+// same wrapper every campaign will be sent in. The postal address (from the
+// sending address) and the unsubscribe link are always in the footer -- the
+// law requires both, so they are not options.
+// ---------------------------------------------------------------------------
+var mkDesignDraft = null;
+
+function mkDesignDefaults() {
+  return {
+    logo_url: "", logo_width: 160, logo_align: "center",
+    brand_color: "#1f6feb", background_color: "#f4f5f7", content_color: "#ffffff", text_color: "#1f2328",
+    font: "Arial", button_style: "rounded",
+    header_text: "", greeting: "Hi {{first_name}},",
+    signature: [currentClient.full_name, currentClient.company_name].filter(Boolean).join("\n"),
+    footer_text: "",
+  };
+}
+
+// Dark text on a light brand colour, white on a dark one.
+function mkReadableOn(hex) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return "#ffffff";
+  const n = parseInt(m[1], 16);
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum > 0.62 ? "#111111" : "#ffffff";
+}
+
+function mkDesignPreviewHtml(d) {
+  const sender = mkSenders.find((x) => x.is_default) || mkSenders[0] || null;
+  const safeColor = (c, dflt) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : dflt);
+  const brand = safeColor(d.brand_color, "#1f6feb");
+  const bg = safeColor(d.background_color, "#f4f5f7");
+  const content = safeColor(d.content_color, "#ffffff");
+  const text = safeColor(d.text_color, "#1f2328");
+  const font = `'${String(d.font || "Arial").replace(/[^A-Za-z ]/g, "")}', Arial, sans-serif`;
+  const radius = { square: "0", rounded: "6px", pill: "999px" }[d.button_style] || "6px";
+  const lines = (v) => escapeHtml(String(v || "")).replace(/\n/g, "<br>");
+  const width = Math.min(300, Math.max(60, Number(d.logo_width) || 160));
+  const logo = /^https:\/\//i.test(d.logo_url || "")
+    ? `<img src="${escapeHtml(d.logo_url)}" alt="" style="max-width:${width}px; width:100%; height:auto; display:inline-block;">`
+    : `<div style="font-size:20px; font-weight:700; color:${brand};">${escapeHtml((sender && sender.from_name) || currentClient.company_name || "Your company")}</div>`;
+  const greeting = lines(String(d.greeting || "").replace(/\{\{\s*first_name\s*\}\}/g, "Alex"));
+  return `
+    <div style="background:${bg}; padding:24px 12px; font-family:${font};">
+      <div style="max-width:560px; margin:0 auto;">
+        <div style="text-align:${d.logo_align === "left" ? "left" : "center"}; padding:4px 4px 16px;">
+          ${logo}
+          ${d.header_text ? `<div style="font-size:13px; color:${text}; opacity:.75; margin-top:8px;">${lines(d.header_text)}</div>` : ""}
+        </div>
+        <div style="background:${content}; color:${text}; border-top:4px solid ${brand}; border-radius:8px; padding:26px 24px; font-size:15px; line-height:1.6;">
+          ${greeting ? `<p style="margin:0 0 14px;">${greeting}</p>` : ""}
+          <p style="margin:0 0 14px;">This is where your campaign message goes. Your team writes the message; this design wraps every email you send.</p>
+          <p style="margin:20px 0;"><span style="display:inline-block; background:${brand}; color:${mkReadableOn(brand)}; padding:11px 22px; border-radius:${radius}; font-weight:700; font-size:14px;">Call to action</span></p>
+          ${d.signature ? `<p style="margin:18px 0 0;">${lines(d.signature)}</p>` : ""}
+        </div>
+        <div style="text-align:center; font-size:11.5px; color:${text}; opacity:.7; padding:16px 8px 4px; line-height:1.6;">
+          ${d.footer_text ? `${lines(d.footer_text)}<br>` : ""}
+          ${sender && sender.postal_address ? `${escapeHtml(sender.postal_address)}<br>` : ""}
+          <span style="text-decoration:underline;">Unsubscribe</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function mkRenderDesignPreview() {
+  const el = document.getElementById("mkDesignPreview");
+  if (el && mkDesignDraft) el.innerHTML = mkDesignPreviewHtml(mkDesignDraft);
+}
+
+function mkRenderTemplateStep() {
+  const box = document.getElementById("mkTemplateBody");
+  if (!box || !mkAccess) return;
+  if (!mkAccess.sender_ready) {
+    box.innerHTML = mkLockedHtml("Finish step 2 first. Your design uses your sending address&rsquo;s name and postal address.");
+    return;
+  }
+  mkDesignDraft = Object.assign(mkDesignDefaults(), (mkTemplate && mkTemplate.design) || {});
+  const d = mkDesignDraft;
+  const colorField = (field, label) => `
+    <div style="flex:1 1 120px; min-width:0;">
+      <label for="mkDz_${field}">${label}</label>
+      <input type="color" id="mkDz_${field}" data-dz="${field}" value="${escapeHtml(d[field])}" style="width:100%; height:36px; padding:2px; cursor:pointer;">
+    </div>`;
+  const opt = (value, label, current) => `<option value="${escapeHtml(value)}"${value === current ? " selected" : ""}>${escapeHtml(label)}</option>`;
+  box.innerHTML = `
+    <div style="font-size:12.5px; color:var(--text-2); margin-bottom:16px; line-height:1.55;">
+      How every email you send will look. Your postal address and an unsubscribe link are added to the footer
+      automatically &mdash; the law requires both.
+      ${mkTemplate ? `<span style="color:var(--success);">Saved ${new Date(mkTemplate.updated_at).toLocaleString()}.</span>` : ""}
+    </div>
+    <div style="display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start;">
+      <div style="flex:1 1 300px; min-width:0;">
+        <label for="mkLogoFile">Logo</label>
+        <input type="file" id="mkLogoFile" accept="image/png,image/jpeg,image/gif,image/webp">
+        <div id="mkLogoMsg" style="font-size:11.5px; color:var(--text-2); margin-top:4px;">PNG, JPG, GIF or WebP, under 1 MB.</div>
+        <label for="mkDz_logo_url" style="margin-top:10px;">or an image address</label>
+        <input type="text" id="mkDz_logo_url" data-dz="logo_url" value="${escapeHtml(d.logo_url)}" placeholder="https://yourcompany.com/logo.png" autocapitalize="off" spellcheck="false">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+          <div style="flex:1 1 150px; min-width:0;">
+            <label for="mkDz_logo_width">Logo size</label>
+            <input type="range" id="mkDz_logo_width" data-dz="logo_width" min="60" max="300" step="10" value="${Number(d.logo_width) || 160}" style="width:100%;">
+          </div>
+          <div style="flex:1 1 120px; min-width:0;">
+            <label for="mkDz_logo_align">Logo position</label>
+            <select id="mkDz_logo_align" data-dz="logo_align">${opt("center", "Centred", d.logo_align)}${opt("left", "Left", d.logo_align)}</select>
+          </div>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+          ${colorField("brand_color", "Brand colour")}
+          ${colorField("background_color", "Page background")}
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+          ${colorField("content_color", "Email background")}
+          ${colorField("text_color", "Text colour")}
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+          <div style="flex:1 1 150px; min-width:0;">
+            <label for="mkDz_font">Font</label>
+            <select id="mkDz_font" data-dz="font">${mkFonts.map((f) => opt(f, f, d.font)).join("")}</select>
+          </div>
+          <div style="flex:1 1 150px; min-width:0;">
+            <label for="mkDz_button_style">Button shape</label>
+            <select id="mkDz_button_style" data-dz="button_style">${opt("rounded", "Rounded", d.button_style)}${opt("square", "Square", d.button_style)}${opt("pill", "Pill", d.button_style)}</select>
+          </div>
+        </div>
+        <label for="mkDz_header_text" style="margin-top:10px;">Tagline under the logo <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
+        <input type="text" id="mkDz_header_text" data-dz="header_text" maxlength="120" value="${escapeHtml(d.header_text)}" placeholder="We buy houses in Chicago, any condition">
+        <label for="mkDz_greeting" style="margin-top:10px;">Greeting</label>
+        <input type="text" id="mkDz_greeting" data-dz="greeting" maxlength="80" value="${escapeHtml(d.greeting)}">
+        <div style="font-size:11px; color:var(--text-2); margin-top:3px;"><span style="font-family:var(--mono);">{{first_name}}</span> becomes each contact&rsquo;s first name.</div>
+        <label for="mkDz_signature" style="margin-top:10px;">Sign-off</label>
+        <textarea class="modal-textarea" id="mkDz_signature" data-dz="signature" maxlength="500" rows="3">${escapeHtml(d.signature)}</textarea>
+        <label for="mkDz_footer_text" style="margin-top:10px;">Footer note <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
+        <textarea class="modal-textarea" id="mkDz_footer_text" data-dz="footer_text" maxlength="500" rows="2" placeholder="You are receiving this because…">${escapeHtml(d.footer_text)}</textarea>
+        <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn-primary" id="mkDesignSaveBtn">${mkTemplate ? "Save design" : "Save design and finish setup"}</button>
+          <span id="mkDesignMsg" style="font-size:12px; color:var(--text-2);"></span>
+        </div>
+      </div>
+      <div style="flex:1 1 320px; min-width:0;">
+        <div style="font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">Preview</div>
+        <div id="mkDesignPreview" style="border:1px solid var(--border); border-radius:8px; overflow:hidden;"></div>
+      </div>
+    </div>`;
+
+  // oninput, not addEventListener: this box is re-rendered on every load and
+  // would otherwise collect one more listener each time.
+  const onField = (e) => {
+    const f = e.target && e.target.dataset ? e.target.dataset.dz : null;
+    if (!f) return;
+    mkDesignDraft[f] = e.target.type === "range" ? Number(e.target.value) : e.target.value;
+    mkRenderDesignPreview();
+  };
+  box.oninput = onField;
+  box.onchange = onField;
+  document.getElementById("mkLogoFile").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) mkUploadLogo(f);
+  });
+  document.getElementById("mkDesignSaveBtn").addEventListener("click", mkSaveDesign);
+  mkRenderDesignPreview();
+}
+
+async function mkUploadLogo(file) {
+  const msg = document.getElementById("mkLogoMsg");
+  const setMsg = (t, c) => { if (msg) { msg.style.color = c || "var(--text-2)"; msg.textContent = t; } };
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return setMsg("Use a PNG, JPG, GIF or WebP image.", "var(--danger)");
+  if (file.size > 1024 * 1024) return setMsg("Keep the logo under 1 MB.", "var(--danger)");
+  setMsg("Uploading…");
+  try {
+    const b64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",")[1] || "");
+      r.onerror = () => reject(new Error("That file could not be read."));
+      r.readAsDataURL(file);
+    });
+    const res = await mkCall("logo_upload", { content_type: file.type, data_base64: b64 });
+    mkDesignDraft.logo_url = res.url;
+    const urlInput = document.getElementById("mkDz_logo_url");
+    if (urlInput) urlInput.value = res.url;
+    mkRenderDesignPreview();
+    setMsg("Uploaded. Save the design to keep it.", "var(--success)");
+  } catch (e) {
+    setMsg(e.message, "var(--danger)");
+  }
+}
+
+async function mkSaveDesign() {
+  const msg = document.getElementById("mkDesignMsg");
+  const btn = document.getElementById("mkDesignSaveBtn");
+  btn.disabled = true;
+  msg.style.color = "var(--text-2)";
+  msg.textContent = "Saving…";
+  try {
+    await mkCall("template_save", { design: mkDesignDraft });
+    await loadMarketingTab();
+    const m = document.getElementById("mkDesignMsg");
+    if (m) {
+      m.style.color = "var(--success)";
+      m.textContent = mkAccess && mkAccess.setup_complete ? "Saved. Setup is complete." : "Saved.";
+    }
+  } catch (e) {
+    msg.style.color = "var(--danger)";
+    msg.textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v757: EMAIL INBOX.
+//
+// Replies to a client's campaigns, from the Telnyx inbox behind each sending
+// address. Messages are shown as plain text -- a stranger's HTML is never
+// rendered inside the portal. Replying sends one email and counts against the
+// monthly allowance.
+// ---------------------------------------------------------------------------
+var mkInboxes = [];
+var mkInboxId = null;
+var mkInboxMessages = [];
+var mkInboxCursor = null;
+var mkInboxOpenMsg = null;
+var mkInboxUnreadOnly = false;
+var mkInboxSearch = "";
+
+function mkWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                 : d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+function mkPerson(p) {
+  if (!p) return "";
+  return p.name ? `${p.name}` : (p.email || "");
+}
+
+async function loadMkInbox() {
+  const box = document.getElementById("mkInboxBody");
+  if (!box) return;
+  if (!mkAccess || !mkAccess.setup_complete) {
+    box.innerHTML = mkSetupFirstHtml("inbox");
+    mkBindGoSetup(box);
+    return;
+  }
+  box.innerHTML = '<div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div>';
+  try {
+    const r = await mkCall("inbox_list", {});
+    mkInboxes = r.inboxes || [];
+    const ready = mkInboxes.filter((i) => i.status === "ready");
+    const notes = mkInboxes.filter((i) => i.status !== "ready").map((i) =>
+      `<div style="font-size:12px; color:#E38B2E; margin-top:4px;">${escapeHtml(i.address || "")}: ${escapeHtml(i.note || "not ready yet")}</div>`).join("");
+    if (!ready.length) {
+      box.innerHTML = `<div style="font-size:12.5px; color:var(--text-2);">Your inbox is not ready yet.</div>${notes}`;
+      return;
+    }
+    if (!ready.some((i) => i.inbox_id === mkInboxId)) mkInboxId = ready[0].inbox_id;
+    const current = ready.find((i) => i.inbox_id === mkInboxId);
+    mkInboxOpenMsg = null;
+    box.innerHTML = `
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        ${ready.length > 1 ? `<div style="flex:1 1 220px; min-width:0;"><label for="mkInboxSel">Address</label>
+          <select id="mkInboxSel">${ready.map((i) => `<option value="${escapeHtml(i.inbox_id)}"${i.inbox_id === mkInboxId ? " selected" : ""}>${escapeHtml(i.address)}</option>`).join("")}</select></div>` : ""}
+        <div style="flex:2 1 220px; min-width:0;"><label for="mkInboxSearch">Search</label>
+          <input type="text" id="mkInboxSearch" value="${escapeHtml(mkInboxSearch)}" placeholder="Subject or message text"></div>
+        <label class="dispute-field-row" style="flex:none; margin:0 0 8px;"><input type="checkbox" id="mkInboxUnread"${mkInboxUnreadOnly ? " checked" : ""}>Unread only</label>
+        <button class="btn-ghost" id="mkInboxRefresh" style="flex:none; margin-bottom:2px;">Refresh</button>
+      </div>
+      <div style="font-size:11.5px; color:var(--text-2); margin-top:8px;">Replies to <b style="font-family:var(--mono);">${escapeHtml(current.address)}</b> arrive here.</div>
+      ${notes}
+      <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; align-items:flex-start;">
+        <div id="mkInboxList" style="flex:1 1 280px; min-width:0; border:1px solid var(--border); border-radius:8px; max-height:600px; overflow:auto;"></div>
+        <div id="mkInboxView" style="flex:2 1 340px; min-width:0; border:1px solid var(--border); border-radius:8px; padding:14px; min-height:200px;"></div>
+      </div>`;
+    const sel = document.getElementById("mkInboxSel");
+    if (sel) sel.addEventListener("change", () => { mkInboxId = sel.value; loadMkInbox(); });
+    let searchTimer = null;
+    document.getElementById("mkInboxSearch").addEventListener("input", (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { mkInboxSearch = e.target.value.trim(); mkInboxLoadMessages(false); }, 400);
+    });
+    document.getElementById("mkInboxUnread").addEventListener("change", (e) => {
+      mkInboxUnreadOnly = e.target.checked; mkInboxLoadMessages(false);
+    });
+    document.getElementById("mkInboxRefresh").addEventListener("click", () => mkInboxLoadMessages(false));
+    await mkInboxLoadMessages(false);
+  } catch (e) {
+    box.innerHTML = `<div style="font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function mkInboxLoadMessages(more) {
+  const list = document.getElementById("mkInboxList");
+  if (!list) return;
+  if (!more) {
+    mkInboxMessages = [];
+    mkInboxCursor = null;
+    list.innerHTML = '<div style="padding:12px; font-size:12.5px; color:var(--text-2);">Loading&hellip;</div>';
+    const view = document.getElementById("mkInboxView");
+    if (view) view.innerHTML = '<div style="font-size:12.5px; color:var(--text-2);">Pick a message to read it.</div>';
+  }
+  try {
+    const r = await mkCall("messages_list", {
+      inbox_id: mkInboxId, unread_only: mkInboxUnreadOnly, search: mkInboxSearch,
+      cursor: more ? mkInboxCursor : null,
+    });
+    mkInboxMessages = mkInboxMessages.concat(r.messages || []);
+    mkInboxCursor = r.cursor || null;
+    mkInboxRenderList();
+  } catch (e) {
+    list.innerHTML = `<div style="padding:12px; font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function mkInboxRenderList() {
+  const list = document.getElementById("mkInboxList");
+  if (!list) return;
+  if (!mkInboxMessages.length) {
+    list.innerHTML = `<div style="padding:14px; font-size:12.5px; color:var(--text-2); line-height:1.55;">
+      ${mkInboxSearch || mkInboxUnreadOnly ? "Nothing matches." : "No replies yet. When someone answers one of your campaigns, it shows up here."}</div>`;
+    return;
+  }
+  list.innerHTML = mkInboxMessages.map((m) => {
+    const unread = m.direction === "inbound" && !m.read_at;
+    const open = mkInboxOpenMsg && mkInboxOpenMsg.id === m.id;
+    return `<div role="button" tabindex="0" data-mk-msg="${escapeHtml(m.id)}" style="padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer;
+        ${open ? "background:var(--focus-dim);" : ""}">
+      <div style="display:flex; gap:8px; align-items:baseline;">
+        ${unread ? '<span aria-label="unread" style="flex:none; width:7px; height:7px; border-radius:50%; background:var(--focus); display:inline-block;"></span>' : ""}
+        <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; font-weight:${unread ? 700 : 500};">${escapeHtml(mkPerson(m.from))}</span>
+        <span style="flex:none; font-size:11px; color:var(--text-2);">${escapeHtml(mkWhen(m.received_at || m.created_at))}</span>
+      </div>
+      <div style="font-size:12px; font-weight:${unread ? 700 : 500}; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(m.subject || "(no subject)")}</div>
+      <div style="font-size:11.5px; color:var(--text-2); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(m.preview || "")}</div>
+    </div>`;
+  }).join("") + (mkInboxCursor
+    ? `<div style="padding:10px; text-align:center;"><button class="btn-ghost" id="mkInboxMore">Load more</button></div>` : "");
+  list.querySelectorAll("[data-mk-msg]").forEach((el) => {
+    el.addEventListener("click", () => mkInboxOpen(el.dataset.mkMsg));
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); mkInboxOpen(el.dataset.mkMsg); } });
+  });
+  const more = document.getElementById("mkInboxMore");
+  if (more) more.addEventListener("click", () => mkInboxLoadMessages(true));
+}
+
+async function mkInboxOpen(id) {
+  const m = mkInboxMessages.find((x) => x.id === id);
+  const view = document.getElementById("mkInboxView");
+  if (!m || !view) return;
+  mkInboxOpenMsg = m;
+  mkInboxRenderList();
+  view.innerHTML = '<div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div>';
+  try {
+    const r = await mkCall("thread_get", { inbox_id: mkInboxId, thread_id: m.thread_id, message_id: m.id });
+    if (m.direction === "inbound" && !m.read_at) { m.read_at = new Date().toISOString(); mkInboxRenderList(); }
+    if (!mkInboxOpenMsg || mkInboxOpenMsg.id !== id) return;   // they clicked another one meanwhile
+    const msgs = r.messages && r.messages.length ? r.messages : [Object.assign({ body: m.preview }, m)];
+    view.innerHTML = `
+      <div style="font-family:var(--display); font-size:16px; font-weight:700; margin-bottom:10px; word-break:break-word;">${escapeHtml(m.subject || "(no subject)")}</div>
+      ${msgs.map((x) => {
+        const mine = x.direction === "outbound";
+        return `<div style="border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:10px; ${mine ? "background:var(--inset);" : ""}">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:12px; margin-bottom:6px;">
+            <b>${mine ? "You" : escapeHtml(mkPerson(x.from))}</b>
+            ${!mine && x.from && x.from.email ? `<span style="color:var(--text-2); font-family:var(--mono); font-size:11px;">${escapeHtml(x.from.email)}</span>` : ""}
+            <span style="margin-left:auto; color:var(--text-2); font-size:11px;">${escapeHtml(new Date(x.received_at || x.sent_at || x.created_at).toLocaleString())}</span>
+          </div>
+          <div style="font-size:13px; line-height:1.55; white-space:pre-wrap; word-break:break-word;">${escapeHtml(x.body || x.preview || "")}</div>
+          ${x.attachments ? `<div style="font-size:11px; color:var(--text-2); margin-top:6px;">${x.attachments} attachment${x.attachments === 1 ? "" : "s"} (not shown)</div>` : ""}
+        </div>`;
+      }).join("")}
+      <label for="mkReplyText" style="margin-top:4px;">Reply</label>
+      <textarea class="modal-textarea" id="mkReplyText" rows="5" placeholder="Write your reply…"></textarea>
+      <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn-primary" id="mkReplySendBtn">Send reply</button>
+        <button class="btn-ghost" id="mkMarkUnreadBtn">Mark unread</button>
+        <span id="mkReplyMsg" style="font-size:12px; color:var(--text-2);">Counts as one email toward your monthly allowance.</span>
+      </div>`;
+    document.getElementById("mkReplySendBtn").addEventListener("click", () => mkInboxReply(m));
+    document.getElementById("mkMarkUnreadBtn").addEventListener("click", async () => {
+      try {
+        await mkCall("message_mark", { inbox_id: mkInboxId, message_id: m.id, read: false });
+        m.read_at = null;
+        mkInboxOpenMsg = null;
+        mkInboxRenderList();
+        view.innerHTML = '<div style="font-size:12.5px; color:var(--text-2);">Marked unread.</div>';
+      } catch (e) {
+        const rm = document.getElementById("mkReplyMsg");
+        if (rm) { rm.style.color = "var(--danger)"; rm.textContent = e.message; }
+      }
+    });
+  } catch (e) {
+    view.innerHTML = `<div style="font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function mkInboxReply(m) {
+  const text = (document.getElementById("mkReplyText").value || "").trim();
+  const msg = document.getElementById("mkReplyMsg");
+  const btn = document.getElementById("mkReplySendBtn");
+  if (!text) { msg.style.color = "var(--danger)"; msg.textContent = "Write a reply first."; return; }
+  btn.disabled = true;
+  msg.style.color = "var(--text-2)";
+  msg.textContent = "Sending…";
+  try {
+    await mkCall("reply", { inbox_id: mkInboxId, message_id: m.id, text });
+    try { await mkLoadAccess(); mkRenderAllowance(); } catch (e) {}
+    await mkInboxOpen(m.id);
+    const after = document.getElementById("mkReplyMsg");
+    if (after) { after.style.color = "var(--success)"; after.textContent = "Reply sent. It can take a moment to appear in the conversation."; }
+  } catch (e) {
+    msg.style.color = "var(--danger)";
+    msg.textContent = e.message;
+    btn.disabled = false;
   }
 }
 
@@ -4614,6 +5044,9 @@ function restoreClientPage() {
   let st = null;
   try { st = JSON.parse(sessionStorage.getItem(CLIENT_PAGE_KEY) || "null"); } catch (e) {}
   if (!st || !st.tab || !currentClient || st.cid !== currentClient.id) return;
+  // v757: whether Email Marketing is allowed is only known once
+  // refreshMarketingNav() hears back; it reopens the tab then.
+  if (st.tab === "marketing" && !(mkAccess && mkAccess.has_access)) { mkPendingRestore = st.sub || "setup"; return; }
   const btn = document.querySelector(`nav.tabs button[data-tab="${st.tab}"]`);
   if (!btn) return;
   for (let el = btn; el && el !== document.body; el = el.parentElement) {
@@ -4737,6 +5170,11 @@ function showApp() {
     });
   });
 
+  // v757: Email Marketing's own subtabs (Setup / Lists / Email Inbox).
+  document.querySelectorAll("#marketingSideSubNav button[data-marketing-subtab]").forEach((btn) => {
+    btn.addEventListener("click", () => mkShowSubtab(btn.dataset.marketingSubtab));
+  });
+
   // v267: self-signup skip-trace-only accounts (account_type === 'skiptrace',
   // set by public-skiptrace's client_signup action) never see the internal
   // Leads/Tickets tabs meant for staff-onboarded full-service clients --
@@ -4750,6 +5188,7 @@ function showApp() {
     document.getElementById("tab-skiptrace").classList.remove("hidden");
   }
   restoreClientPage();   // v714: a refresh reopens the page this tab was on
+  refreshMarketingNav();   // v757: show Email Marketing only to a client with a seat
 
   loadData();
   loadSkiptraceAccount();
@@ -7243,6 +7682,8 @@ function scheduleBillingRealtimeReload() {
     // subscription renewal) can land after a client_campaign_subscriptions
     // change, so refresh it too if that subtab's already been opened once.
     if (billingInvoicesLoaded && typeof loadBillingInvoices === "function") loadBillingInvoices();
+    // v757: a seat bought or cancelled switches Email Marketing on or off live.
+    if (typeof refreshMarketingNav === "function") refreshMarketingNav();
   }, 600);
 }
 
@@ -10898,7 +11339,7 @@ function navigateToClientTab(tabName, subtabName) {
   if (subtabName) {
     setTimeout(() => {
       const subBtn = document.querySelector(
-        `button[data-leads-subtab="${subtabName}"], button[data-buylist-subtab="${subtabName}"], button[data-skiptrace-subtab="${subtabName}"], button[data-billing-subtab="${subtabName}"]`
+        `button[data-leads-subtab="${subtabName}"], button[data-buylist-subtab="${subtabName}"], button[data-skiptrace-subtab="${subtabName}"], button[data-billing-subtab="${subtabName}"], button[data-marketing-subtab="${subtabName}"]`
       );
       if (subBtn) subBtn.click();
     }, 0);
