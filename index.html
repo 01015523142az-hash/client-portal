@@ -2302,6 +2302,7 @@
           <div class="leads-side-subnav" id="marketingSideSubNav">
             <button class="leads-side-subtab-btn active" data-marketing-subtab="setup">Setup</button>
             <button class="leads-side-subtab-btn" data-marketing-subtab="lists">Lists</button>
+            <button class="leads-side-subtab-btn" data-marketing-subtab="campaigns">Campaigns</button>
             <button class="leads-side-subtab-btn" data-marketing-subtab="inbox">Email Inbox</button>
           </div>
         </div>
@@ -2880,6 +2881,13 @@
         <div class="panel">
           <div class="panel-title">Your lists</div>
           <div id="mkListsBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
+        </div>
+      </div>
+
+      <div id="marketingSubtab-campaigns" class="hidden">
+        <div class="panel">
+          <div class="panel-title">Campaigns</div>
+          <div id="mkCampaignsBody"><div style="font-size:12.5px; color:var(--text-2);">Loading&hellip;</div></div>
         </div>
       </div>
 
@@ -3677,6 +3685,8 @@ async function loadMarketingTab() {
     mkListsRender();
     const inboxPane = document.getElementById("marketingSubtab-inbox");
     if (inboxPane && !inboxPane.classList.contains("hidden")) loadMkInbox();
+    const campPane = document.getElementById("marketingSubtab-campaigns");
+    if (campPane && !campPane.classList.contains("hidden")) loadMkCampaigns();
   } catch (e) {
     if (box) box.innerHTML = `<div style="font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
   }
@@ -3757,7 +3767,7 @@ function mkRenderNoAccess() {
     const b = document.getElementById("mkNoAccessCreateBtn");
     if (b) b.addEventListener("click", () => openCreateCampaignModal());
   }
-  ["mkSteps", "mkSenderBody", "mkTemplateBody", "mkListsBody", "mkInboxBody"].forEach((id) => {
+  ["mkSteps", "mkSenderBody", "mkTemplateBody", "mkListsBody", "mkCampaignsBody", "mkInboxBody"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = "";
   });
@@ -3800,7 +3810,7 @@ function mkSetupFirstHtml(what) {
     !mkAccess.sender_ready && "add a sending address",
     !mkAccess.template_ready && "design your email",
   ].filter(Boolean);
-  return `${mkLockedHtml(`Finish setup first &mdash; ${what === "inbox" ? "your inbox opens" : "your lists appear here"}
+  return `${mkLockedHtml(`Finish setup first &mdash; ${what === "inbox" ? "your inbox opens" : what === "campaigns" ? "your campaigns appear here" : "your lists appear here"}
       once all three steps are done. Still to do: <b>${missing.join(", ")}</b>.`)}
     <button class="btn-primary" data-mk-go-setup style="margin-top:12px;">Go to setup</button>`;
 }
@@ -3812,11 +3822,12 @@ function mkBindGoSetup(root) {
 function mkShowSubtab(key) {
   document.querySelectorAll("#marketingSideSubNav button[data-marketing-subtab]").forEach((b) =>
     b.classList.toggle("active", b.dataset.marketingSubtab === key));
-  ["setup", "lists", "inbox"].forEach((k) => {
+  ["setup", "lists", "campaigns", "inbox"].forEach((k) => {
     const el = document.getElementById("marketingSubtab-" + k);
     if (el) el.classList.toggle("hidden", k !== key);
   });
   if (key === "lists") mkListsRender();
+  if (key === "campaigns") loadMkCampaigns();
   if (key === "inbox") loadMkInbox();
 }
 
@@ -4028,6 +4039,112 @@ async function mkSaveDesign() {
     msg.style.color = "var(--danger)";
     msg.textContent = e.message;
     btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v758: CAMPAIGNS, READ-ONLY. Your PropTech AI team writes and sends them; the
+// client sees each one's status and results, and can view the email exactly
+// as it was sent (rendered by the server, shown in a sandboxed frame).
+// ---------------------------------------------------------------------------
+var mkCampaigns = [];
+var mkCampTimer = null;
+
+async function mkCampCall(action, payload) {
+  const { data, error } = await sb.functions.invoke("marketing-campaigns", { body: { action, ...payload } });
+  if (error || !data || data.ok === false) throw new Error(await skiptraceInvokeErrorMessage(error, data));
+  return data;
+}
+
+const MK_CAMP_LABEL = {
+  draft: ["Being written", "wait"], scheduled: ["Scheduled", "wait"], sending: ["Sending", "wait"],
+  paused: ["Paused", "wait"], sent: ["Sent", "good"], cancelled: ["Cancelled", ""],
+};
+
+async function loadMkCampaigns() {
+  const box = document.getElementById("mkCampaignsBody");
+  if (!box) return;
+  clearTimeout(mkCampTimer);
+  if (!mkAccess || !mkAccess.setup_complete) {
+    box.innerHTML = mkSetupFirstHtml("campaigns");
+    mkBindGoSetup(box);
+    return;
+  }
+  try {
+    const r = await mkCampCall("list", {});
+    mkCampaigns = (r.campaigns || []).filter((c) => !c.dry_run);
+    mkCampaignsRender();
+    if (mkCampaigns.some((c) => c.status === "sending" || c.status === "scheduled")) {
+      mkCampTimer = setTimeout(() => {
+        const pane = document.getElementById("marketingSubtab-campaigns");
+        const tabBtn = document.getElementById("marketingNavBtn");
+        if (pane && !pane.classList.contains("hidden") && tabBtn && tabBtn.classList.contains("active")) loadMkCampaigns();
+      }, 20000);
+    }
+  } catch (e) {
+    box.innerHTML = `<div style="font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function mkCampaignsRender() {
+  const box = document.getElementById("mkCampaignsBody");
+  if (!box) return;
+  const pct = (n, of) => (of ? ` <span style="color:var(--text-2); font-size:11px;">${Math.round((100 * n) / of)}%</span>` : "");
+  const when = (c) => {
+    const t = c.finished_at || c.started_at || c.scheduled_at || c.created_at;
+    return t ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+  };
+  const rows = mkCampaigns.length ? mkCampaigns.map((c) => {
+    const st = c.stats || {};
+    const sent = st.sent || 0;
+    const [label, tone] = MK_CAMP_LABEL[c.status] || [c.status, ""];
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:9px 10px 9px 0; vertical-align:top;"><b>${escapeHtml(c.subject || c.name)}</b>
+        <div style="font-size:11px; color:var(--text-2);">${escapeHtml(when(c))}</div></td>
+      <td style="padding:9px 10px 9px 0; vertical-align:top; white-space:nowrap;">${mkChip(escapeHtml(label), tone)}</td>
+      <td style="padding:9px 10px 9px 0; vertical-align:top; font-family:var(--mono);">${sent.toLocaleString()}${st.queued ? `<div style="font-size:11px; color:var(--text-2);">${st.queued.toLocaleString()} to go</div>` : ""}</td>
+      <td style="padding:9px 10px 9px 0; vertical-align:top; font-family:var(--mono);">${(st.delivered || 0).toLocaleString()}${pct(st.delivered || 0, sent)}</td>
+      <td style="padding:9px 10px 9px 0; vertical-align:top; font-family:var(--mono);">${(st.opened || 0).toLocaleString()}${pct(st.opened || 0, sent)}</td>
+      <td style="padding:9px 10px 9px 0; vertical-align:top; font-family:var(--mono);">${(st.clicked || 0).toLocaleString()}${pct(st.clicked || 0, sent)}</td>
+      <td style="padding:9px 10px 9px 0; vertical-align:top; font-family:var(--mono);">${(st.unsubscribed || 0).toLocaleString()}</td>
+      <td style="padding:9px 0; vertical-align:top; text-align:right;"><button class="btn-ghost" data-mk-camp-view="${escapeHtml(c.id)}" style="font-size:11px; padding:3px 9px;">View email</button></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="8" style="padding:10px 0; font-size:12.5px; color:var(--text-2);">No campaigns yet. Your PropTech AI team will send them from your domain.</td></tr>`;
+  box.innerHTML = `
+    <div style="font-size:12.5px; color:var(--text-2); margin-bottom:14px; line-height:1.55;">
+      Your PropTech AI team writes and sends your campaigns from your own domain. Replies arrive in your Email Inbox.
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px; min-width:640px;">
+        <thead><tr style="text-align:left; color:var(--text-2); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;">
+          <th style="padding:0 10px 6px 0;">Campaign</th><th style="padding:0 10px 6px 0;">Status</th><th style="padding:0 10px 6px 0;">Sent</th>
+          <th style="padding:0 10px 6px 0;">Delivered</th><th style="padding:0 10px 6px 0;">Opened</th><th style="padding:0 10px 6px 0;">Clicked</th>
+          <th style="padding:0 10px 6px 0;">Unsubscribed</th><th></th>
+        </tr></thead><tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  box.querySelectorAll("[data-mk-camp-view]").forEach((b) => b.addEventListener("click", () => mkCampView(b.dataset.mkCampView)));
+}
+
+async function mkCampView(id) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px;";
+  overlay.innerHTML = `<div class="panel" style="width:min(760px,100%); max-height:92vh; display:flex; flex-direction:column; gap:8px; margin:0;">
+      <div style="display:flex; gap:10px; align-items:center;">
+        <b id="mkCampViewSubject" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Loading&hellip;</b>
+        <button class="btn-ghost" id="mkCampViewClose">Close</button></div>
+      <iframe id="mkCampViewFrame" sandbox="" title="Email preview" style="width:100%; height:70vh; border:1px solid var(--border); border-radius:8px; background:#fff;"></iframe>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("#mkCampViewClose").addEventListener("click", close);
+  try {
+    const r = await mkCampCall("preview", { id });
+    overlay.querySelector("#mkCampViewSubject").textContent = r.subject || "(no subject)";
+    overlay.querySelector("#mkCampViewFrame").srcdoc = r.html;
+  } catch (e) {
+    overlay.querySelector("#mkCampViewSubject").textContent = e.message;
   }
 }
 
