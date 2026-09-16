@@ -3258,6 +3258,47 @@ function playAuthCardEntrance(screenEl){
 
 let isStaffImpersonating = false;
 
+// ---------------------------------------------------------------------------
+// v748: a client session ends after 4 HOURS OF INACTIVITY -- the same rule the
+// staff portal has (its IDLE_TIMEOUT_MS). A refresh inside those four hours
+// still restores the session (the v333 behaviour): the stamp lives in
+// localStorage beside the session itself. What it no longer does is keep
+// somebody signed in for days on an unattended machine, and Supabase's own
+// autoRefreshToken cannot extend it, because this counts real input, not
+// tokens. Sitting on the login form is never mistaken for a stale session.
+// ---------------------------------------------------------------------------
+const IDLE_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+const IDLE_LAST_ACTIVITY_KEY = "clientPortalLastActivityAt";
+const IDLE_SIGNOUT_MESSAGE_KEY = "clientPortalIdleSignOutMessage";
+let lastActivityRecordedAt = 0;
+function recordActivity() {
+  const now = Date.now();
+  if (now - lastActivityRecordedAt < 5000) return;   // mousemove/scroll fire constantly
+  lastActivityRecordedAt = now;
+  try { localStorage.setItem(IDLE_LAST_ACTIVITY_KEY, String(now)); } catch (e) {}
+}
+function idleMsElapsed() {
+  try {
+    const last = Number(localStorage.getItem(IDLE_LAST_ACTIVITY_KEY));
+    return last ? Date.now() - last : 0;
+  } catch (e) { return 0; }
+}
+["click", "keydown", "mousemove", "scroll", "touchstart"].forEach((evt) => {
+  document.addEventListener(evt, recordActivity, { passive: true });
+});
+async function idleSignOut() {
+  try {
+    localStorage.setItem(IDLE_SIGNOUT_MESSAGE_KEY,
+      "You were signed out after 4 hours of inactivity — please sign in again.");
+    localStorage.removeItem(IDLE_LAST_ACTIVITY_KEY);
+  } catch (e) {}
+  try { await sb.auth.signOut(); } catch (e) {}
+  location.reload();
+}
+setInterval(() => {
+  if (currentClient && idleMsElapsed() >= IDLE_TIMEOUT_MS) idleSignOut();
+}, 60000);
+
 async function init() {
   // v334: loginScreen used to be visible by default (unhidden in the raw
   // HTML) and this used to unconditionally animate it in right here,
@@ -3276,6 +3317,16 @@ async function init() {
   // getSession() restore below runs. The token is single-use, so the URL
   // is scrubbed immediately either way — a refresh or a bookmark of this
   // URL should never be able to replay it.
+  // v748: say why they were signed out, if that is why they are here.
+  try {
+    const staleMsg = localStorage.getItem(IDLE_SIGNOUT_MESSAGE_KEY);
+    if (staleMsg) {
+      localStorage.removeItem(IDLE_SIGNOUT_MESSAGE_KEY);
+      const box = document.getElementById("loginError");
+      if (box) { box.textContent = staleMsg; box.classList.remove("hidden"); }
+    }
+  } catch (e) {}
+
   try {
     const impersonateParams = new URLSearchParams(location.search);
     const impersonateTokenHash = impersonateParams.get("staff_token");
@@ -3289,6 +3340,22 @@ async function init() {
       }
       console.error("Staff impersonation sign-in failed (token may be expired/already used):", otpErr.message);
       // falls through to the normal signed-in-session-restore flow below
+    }
+
+    // v748: a stored session that has been idle past the timeout is not
+    // restored -- the computer may have slept straight through the
+    // once-a-minute check above.
+    if (idleMsElapsed() >= IDLE_TIMEOUT_MS) {
+      await sb.auth.signOut().catch(() => {});
+      try { localStorage.removeItem(IDLE_LAST_ACTIVITY_KEY); } catch (e) {}
+      const box = document.getElementById("loginError");
+      if (box && !box.textContent) {
+        box.textContent = "You were signed out after 4 hours of inactivity — please sign in again.";
+        box.classList.remove("hidden");
+      }
+      document.getElementById("loginScreen").classList.remove("hidden");
+      playAuthCardEntrance(document.getElementById("loginScreen"));
+      return;
     }
 
     const { data: { session } } = await sb.auth.getSession();
@@ -3347,6 +3414,7 @@ function isPasswordExpired(changedAt) {
 }
 
 async function afterLogin(isExplicitLogin) {
+  recordActivity();   // v748: signing in or resuming starts the 4-hour clock
   const _topbar = document.querySelector(".app-topbar");
   if (_topbar) {
     window.addEventListener("scroll", () => {
