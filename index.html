@@ -3273,13 +3273,36 @@ function mkChip(text, tone) {
     text-transform:uppercase; border:1px solid ${c}; color:${c}; border-radius:999px; padding:2px 8px;">${text}</span>`;
 }
 
-function mkRecordRows(records) {
+// v753c: DNS PANELS DISAGREE ABOUT THE HOST FIELD, and it costs an hour every
+// time. Some want the fully-qualified name; most (cPanel, Namecheap, GoDaddy,
+// Cloudflare) already show ".yourdomain.com" beside the box and append it
+// themselves -- so pasting the full name creates
+// mail.theirdomain.com.theirdomain.com and nothing ever verifies. The records
+// look perfect in the panel and resolve nowhere.
+//
+// The sending domain is always ONE label in front of the registered domain
+// (the wizard asks for exactly that), so stripping the first label gives the
+// zone reliably -- including for .co.uk, where guessing "last two labels"
+// would be wrong.
+function mkShortHost(host, sendingDomain) {
+  const parts = String(sendingDomain || "").split(".");
+  if (parts.length < 3) return null;
+  const zone = parts.slice(1).join(".");           // primehomebuyers.casa
+  const h = String(host || "");
+  if (h === zone) return "@";
+  if (h.endsWith("." + zone)) return h.slice(0, -(zone.length + 1));
+  return null;
+}
+
+function mkRecordRows(records, sendingDomain) {
   return (records || []).map((r) => {
     const ok = String(r.status || "").toLowerCase() === "verified";
     const needed = r.required === false ? " (recommended)" : "";
+    const short = mkShortHost(r.host, sendingDomain);
     return `<tr>
       <td style="padding:7px 10px 7px 0; white-space:nowrap;"><b>${escapeHtml(r.record_type || "")}</b>${needed}</td>
-      <td style="padding:7px 10px 7px 0; font-family:var(--mono); font-size:11px; word-break:break-all;">${escapeHtml(r.host || "")}</td>
+      <td style="padding:7px 10px 7px 0; font-family:var(--mono); font-size:11px; word-break:break-all;">${escapeHtml(r.host || "")}${
+        short ? `<div style="color:var(--text-2); font-size:10.5px; margin-top:3px;">or just <b>${escapeHtml(short)}</b> if the box already shows your domain beside it</div>` : ""}</td>
       <td style="padding:7px 10px 7px 0; font-family:var(--mono); font-size:11px; word-break:break-all;">${escapeHtml(r.value || "")}${
         r.priority ? `<div style="color:var(--text-2)">priority ${escapeHtml(String(r.priority))}</div>` : ""}</td>
       <td style="padding:7px 0;">${ok ? mkChip("found", "good") : mkChip("waiting", "wait")}</td>
@@ -3302,13 +3325,20 @@ function mkRenderDomain(d) {
         ? "Verified. Campaigns from this domain will be sent as you, and replies come back to your inbox here."
         : "Add these five records at whoever manages this domain's DNS, then press Check. They can take up to an hour to appear."}
     </div>
+    ${ready ? "" : `<div style="font-size:12px; line-height:1.55; border-left:3px solid var(--focus, #c9a227);
+      background:var(--focus-dim, rgba(201,162,39,.08)); padding:10px 12px; border-radius:6px; margin-bottom:14px;">
+      <b>Check the Name field before you save.</b> Most DNS panels already show your domain
+      beside that box and add it for you. Pasting the full name there creates a doubled
+      record such as <span style="font-family:var(--mono)">mail.yourdomain.com.yourdomain.com</span>,
+      which looks right in the panel and resolves nowhere. Each row below shows both forms &mdash;
+      use whichever matches your panel.</div>`}
     <div style="overflow-x:auto;">
       <table style="width:100%; border-collapse:collapse; font-size:12px; min-width:520px;">
         <thead><tr style="text-align:left; color:var(--text-2); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;">
           <th style="padding:0 10px 6px 0;">Type</th><th style="padding:0 10px 6px 0;">Name / Host</th>
           <th style="padding:0 10px 6px 0;">Value</th><th style="padding:0 0 6px;">Status</th>
         </tr></thead>
-        <tbody>${mkRecordRows(records) || '<tr><td colspan="4" style="padding:8px 0; color:var(--text-2);">No records returned yet.</td></tr>'}</tbody>
+        <tbody>${mkRecordRows(records, d.domain) || '<tr><td colspan="4" style="padding:8px 0; color:var(--text-2);">No records returned yet.</td></tr>'}</tbody>
       </table>
     </div>
     <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
