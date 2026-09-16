@@ -3267,8 +3267,12 @@ applyThemeIcon();
 // ---------------------------------------------------------------------------
 let mkDomains = [];
 
+// v754: three states, three colours. The first version asked for var(--success),
+// which this portal does not define -- an unknown custom property makes the
+// whole declaration invalid, so the chips silently rendered in body text.
+// The portal's tokens are --success, --danger and --focus.
 function mkChip(text, tone) {
-  const c = { good: "var(--good)", bad: "var(--danger)", wait: "var(--text-2)" }[tone] || "var(--text-2)";
+  const c = { good: "var(--success)", bad: "var(--danger)", wait: "#E38B2E" }[tone] || "var(--text-2)";
   return `<span style="display:inline-block; font-family:var(--mono); font-size:10px; letter-spacing:.06em;
     text-transform:uppercase; border:1px solid ${c}; color:${c}; border-radius:999px; padding:2px 8px;">${text}</span>`;
 }
@@ -3305,7 +3309,10 @@ function mkRecordRows(records, sendingDomain) {
         short ? `<div style="color:var(--text-2); font-size:10.5px; margin-top:3px;">or just <b>${escapeHtml(short)}</b> if the box already shows your domain beside it</div>` : ""}</td>
       <td style="padding:7px 10px 7px 0; font-family:var(--mono); font-size:11px; word-break:break-all;">${escapeHtml(r.value || "")}${
         r.priority ? `<div style="color:var(--text-2)">priority ${escapeHtml(String(r.priority))}</div>` : ""}</td>
-      <td style="padding:7px 0;">${ok ? mkChip("found", "good") : mkChip("waiting", "wait")}</td>
+      <td style="padding:7px 0;">${
+        ok ? mkChip("found", "good")
+        : ["failed", "invalid", "error"].includes(String(r.status || "").toLowerCase())
+          ? mkChip("failed", "bad") : mkChip("waiting", "wait")}</td>
     </tr>`;
   }).join("");
 }
@@ -3342,9 +3349,15 @@ function mkRenderDomain(d) {
       </table>
     </div>
     <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-      <button class="btn" id="mkCheckBtn" data-id="${escapeHtml(d.id)}">Check DNS</button>
+      ${ready
+        // v754: once it is verified there is nothing left to check, so the
+        // button that stays is the one there is still a reason to press.
+        ? `<button class="btn-outline" id="mkDisconnectBtn" data-id="${escapeHtml(d.id)}"
+             data-domain="${escapeHtml(d.domain)}">Disconnect domain</button>`
+        : `<button class="btn-primary" id="mkCheckBtn" data-id="${escapeHtml(d.id)}">Check DNS</button>`}
       <span id="mkCheckMsg" style="font-size:12px; color:var(--text-2);"></span>
     </div>
+    ${ready ? mkSendersSection(d) : ""}
     ${d.last_checked_at ? `<div style="font-size:11px; color:var(--text-2); margin-top:8px;">Last checked ${new Date(d.last_checked_at).toLocaleString()}</div>` : ""}
     ${d.last_error ? `<div style="font-size:11.5px; color:var(--danger); margin-top:8px;">${escapeHtml(d.last_error)}</div>` : ""}`;
 }
@@ -3360,7 +3373,7 @@ function mkRenderEmpty() {
     <label for="mkDomainInput">Sending subdomain</label>
     <input type="text" id="mkDomainInput" placeholder="mail.yourcompany.com" autocapitalize="off" spellcheck="false" style="max-width:340px;">
     <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-      <button class="btn" id="mkConnectBtn">Connect domain</button>
+      <button class="btn-primary" id="mkConnectBtn">Connect domain</button>
       <span id="mkConnectMsg" style="font-size:12px; color:var(--text-2);"></span>
     </div>`;
 }
@@ -3368,13 +3381,163 @@ function mkRenderEmpty() {
 function mkRender() {
   const box = document.getElementById("mkDomainBody");
   if (!box) return;
-  box.innerHTML = mkDomains.length ? mkDomains.map(mkRenderDomain).join('<hr style="border:none; border-top:1px solid var(--line); margin:18px 0;">')
+  box.innerHTML = mkDomains.length ? mkDomains.map(mkRenderDomain).join('<hr style="border:none; border-top:1px solid var(--border); margin:18px 0;">')
                                    : mkRenderEmpty();
 
   const connectBtn = document.getElementById("mkConnectBtn");
   if (connectBtn) connectBtn.addEventListener("click", mkConnect);
   const checkBtn = document.getElementById("mkCheckBtn");
   if (checkBtn) checkBtn.addEventListener("click", () => mkCheck(checkBtn.dataset.id));
+  const discBtn = document.getElementById("mkDisconnectBtn");
+  if (discBtn) discBtn.addEventListener("click", () => mkDisconnect(discBtn.dataset.id, discBtn.dataset.domain));
+  const saveBtn = document.getElementById("mkSenderSaveBtn");
+  if (saveBtn) saveBtn.addEventListener("click", () => mkSaveSender(saveBtn.dataset.domainId));
+  box.querySelectorAll("[data-del-sender]").forEach((b) => {
+    b.addEventListener("click", () => mkDeleteSender(b.dataset.delSender));
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// v754: SENDING ADDRESSES.
+//
+// The address a campaign actually goes out as -- noreply@mail.theirdomain.com
+// and so on. Only offered on a verified domain, because sending from an
+// unverified one bounces and the reputation damage is theirs.
+//
+// The postal address is not a formality. CAN-SPAM requires a real one in every
+// commercial email, it has to be the sender's own, and the send engine reads
+// it from here -- so it is required at the point somebody is actually able to
+// supply it rather than discovered later by a bounce.
+// ---------------------------------------------------------------------------
+let mkSenders = [];
+
+function mkSenderRows(d) {
+  if (!mkSenders.length) {
+    return `<tr><td colspan="4" style="padding:8px 0; color:var(--text-2); font-size:12px;">
+      No sending address yet — add one below.</td></tr>`;
+  }
+  return mkSenders.map((s) => `<tr>
+    <td style="padding:7px 10px 7px 0; font-family:var(--mono); font-size:11.5px; word-break:break-all;">
+      ${escapeHtml(s.from_local)}@${escapeHtml(d.domain)}
+      ${s.is_default ? " " + mkChip("default", "good") : ""}</td>
+    <td style="padding:7px 10px 7px 0;">${escapeHtml(s.from_name || "")}</td>
+    <td style="padding:7px 10px 7px 0; font-size:11.5px; color:var(--text-2); word-break:break-all;">
+      ${escapeHtml(s.reply_to || "—")}</td>
+    <td style="padding:7px 0;"><button class="btn-ghost" data-del-sender="${escapeHtml(s.id)}"
+      style="font-size:11px; padding:3px 9px;">Remove</button></td>
+  </tr>`).join("");
+}
+
+function mkSendersSection(d) {
+  return `
+    <div style="margin-top:26px; padding-top:20px; border-top:1px solid var(--border);">
+      <div style="font-family:var(--display); font-size:15px; font-weight:700; margin-bottom:4px;">Sending addresses</div>
+      <div style="font-size:12.5px; color:var(--text-2); margin-bottom:14px; line-height:1.55;">
+        The address your campaigns are sent from. Anything before the @ works &mdash;
+        <span style="font-family:var(--mono)">noreply@${escapeHtml(d.domain)}</span> is the usual choice
+        for bulk sending.
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px; min-width:460px;">
+          <thead><tr style="text-align:left; color:var(--text-2); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;">
+            <th style="padding:0 10px 6px 0;">Address</th><th style="padding:0 10px 6px 0;">From name</th>
+            <th style="padding:0 10px 6px 0;">Replies go to</th><th style="padding:0 0 6px;"></th>
+          </tr></thead>
+          <tbody>${mkSenderRows(d)}</tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:18px; padding:14px; border:1px solid var(--border); border-radius:8px;">
+        <div style="font-size:12.5px; font-weight:700; margin-bottom:10px;">Add a sending address</div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <div style="flex:1 1 180px;">
+            <label for="mkFromName">From name</label>
+            <input type="text" id="mkFromName" placeholder="PrimeHome Buyers">
+          </div>
+          <div style="flex:1 1 180px;">
+            <label for="mkFromLocal">Address</label>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="text" id="mkFromLocal" placeholder="noreply" autocapitalize="off" spellcheck="false" style="min-width:0;">
+              <span style="font-family:var(--mono); font-size:11.5px; color:var(--text-2); white-space:nowrap;">@${escapeHtml(d.domain)}</span>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <label for="mkReplyTo">Replies go to <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
+          <input type="text" id="mkReplyTo" placeholder="you@yourcompany.com" autocapitalize="off" spellcheck="false">
+        </div>
+        <div style="margin-top:10px;">
+          <label for="mkPostal">Postal address</label>
+          <input type="text" id="mkPostal" placeholder="123 Main St, Suite 4, Chicago, IL 60601">
+          <div style="font-size:11px; color:var(--text-2); margin-top:4px; line-height:1.5;">
+            Required by law in every marketing email (CAN-SPAM), and it must be yours.
+            It appears in the footer of anything you send.
+          </div>
+        </div>
+        <label class="dispute-field-row" style="margin-top:10px;">
+          <input type="checkbox" id="mkIsDefault">Use this as the default sending address
+        </label>
+        <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn-primary" id="mkSenderSaveBtn" data-domain-id="${escapeHtml(d.id)}">Save address</button>
+          <span id="mkSenderMsg" style="font-size:12px; color:var(--text-2);"></span>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function mkSaveSender(domainId) {
+  const msg = document.getElementById("mkSenderMsg");
+  const btn = document.getElementById("mkSenderSaveBtn");
+  btn.disabled = true;
+  msg.style.color = "var(--text-2)";
+  msg.textContent = "Saving…";
+  try {
+    const r = await mkCall("sender_save", {
+      domain_id: domainId,
+      from_name: document.getElementById("mkFromName").value,
+      from_local: document.getElementById("mkFromLocal").value,
+      reply_to: document.getElementById("mkReplyTo").value,
+      postal_address: document.getElementById("mkPostal").value,
+      is_default: document.getElementById("mkIsDefault").checked,
+    });
+    await loadMarketingTab();
+    const m = document.getElementById("mkSenderMsg");
+    if (m) { m.style.color = "var(--success)"; m.textContent = `Saved — ${r.address}`; }
+  } catch (e) {
+    msg.style.color = "var(--danger)";
+    msg.textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+async function mkDeleteSender(id) {
+  try {
+    await mkCall("sender_delete", { id });
+    await loadMarketingTab();
+  } catch (e) {
+    const m = document.getElementById("mkSenderMsg");
+    if (m) { m.style.color = "var(--danger)"; m.textContent = e.message; }
+  }
+}
+
+async function mkDisconnect(id, domain) {
+  // Irreversible: the domain is deleted at Telnyx and everything sending from
+  // it stops. Worth one deliberate confirmation rather than a quiet button.
+  if (!window.confirm(
+      `Disconnect ${domain}?\n\nThis deletes it at our email provider and stops any campaign sending `
+    + `from it. You would need to add the DNS records again to reconnect.`)) return;
+  const msg = document.getElementById("mkCheckMsg");
+  const btn = document.getElementById("mkDisconnectBtn");
+  if (btn) btn.disabled = true;
+  if (msg) { msg.style.color = "var(--text-2)"; msg.textContent = "Disconnecting…"; }
+  try {
+    await mkCall("disconnect", { domain_id: id, confirm: true });
+    await loadMarketingTab();
+  } catch (e) {
+    if (msg) { msg.style.color = "var(--danger)"; msg.textContent = e.message; }
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function mkCall(action, payload) {
@@ -3391,6 +3554,13 @@ async function loadMarketingTab() {
   try {
     const r = await mkCall("list", {});
     mkDomains = r.domains || [];
+    // Only worth asking once a domain exists; a client with none has none.
+    if (mkDomains.some((d) => d.usable_for_sending)) {
+      const s = await mkCall("senders_list", {});
+      mkSenders = s.senders || [];
+    } else {
+      mkSenders = [];
+    }
     mkRender();
   } catch (e) {
     if (box) box.innerHTML = `<div style="font-size:12.5px; color:var(--danger);">${escapeHtml(e.message)}</div>`;
@@ -3433,7 +3603,7 @@ async function mkCheck(id) {
     mkRender();
     const m = document.getElementById("mkCheckMsg");
     if (m) {
-      if (r.ready_to_send) { m.style.color = "var(--good)"; m.textContent = "Verified — you can send from this domain."; }
+      if (r.ready_to_send) { m.style.color = "var(--success)"; m.textContent = "Verified — you can send from this domain."; }
       else { m.style.color = "var(--text-2)"; m.textContent = (r.outstanding || []).length
         ? "Still waiting on: " + r.outstanding.join(", ") + ". DNS can take up to an hour."
         : "Not verified yet. DNS can take up to an hour."; }
