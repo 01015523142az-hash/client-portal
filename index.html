@@ -3283,6 +3283,9 @@ function idleMsElapsed() {
     return last ? Date.now() - last : 0;
   } catch (e) { return 0; }
 }
+// Taken before the listeners below exist: a mousemove as the page loads must
+// not reset the clock and revive a session that should already have ended.
+const IDLE_MS_AT_BOOT = idleMsElapsed();
 ["click", "keydown", "mousemove", "scroll", "touchstart"].forEach((evt) => {
   document.addEventListener(evt, recordActivity, { passive: true });
 });
@@ -3345,7 +3348,7 @@ async function init() {
     // v748: a stored session that has been idle past the timeout is not
     // restored -- the computer may have slept straight through the
     // once-a-minute check above.
-    if (idleMsElapsed() >= IDLE_TIMEOUT_MS) {
+    if (IDLE_MS_AT_BOOT >= IDLE_TIMEOUT_MS) {
       await sb.auth.signOut().catch(() => {});
       try { localStorage.removeItem(IDLE_LAST_ACTIVITY_KEY); } catch (e) {}
       const box = document.getElementById("loginError");
