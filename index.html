@@ -3263,7 +3263,20 @@ function idleMsElapsed() {
 // Taken before the listeners below exist: a mousemove as the page loads must
 // not reset the clock and revive a session that should already have ended.
 const IDLE_MS_AT_BOOT = idleMsElapsed();
-["click", "keydown", "mousemove", "scroll", "touchstart"].forEach((evt) => {
+// v751: "scroll" WAS IN THIS LIST AND BROKE THE WHOLE TIMEOUT.
+//
+// A scroll event does not mean a person scrolled. chatPinToBottom() sets
+// box.scrollTop on every incoming chat message, on every image that finishes
+// loading, and on each realtime update -- and the browser fires a real,
+// trusted scroll event for each one. So an unattended machine with the chat
+// panel open kept stamping "activity" by itself and the four-hour clock never
+// ran down. isTrusted cannot tell these apart: the scroll genuinely happened,
+// nobody asked for it.
+//
+// "wheel" is the honest signal -- it comes from the input device, and setting
+// scrollTop never produces one. Keyboard scrolling is already covered by
+// keydown, and touch scrolling by touchstart.
+["click", "keydown", "mousemove", "wheel", "touchstart"].forEach((evt) => {
   document.addEventListener(evt, recordActivity, { passive: true });
 });
 async function idleSignOut() {
