@@ -3654,7 +3654,9 @@ async function mkDisconnect(id, domain) {
 const MK_AUDIENCE_ACTIONS = ["audience_list"];
 const MK_TEMPLATE_ACTIONS = ["template_get", "template_save", "logo_upload",
   // v765: step 3 is the sending content as well as the design.
-  "content_ai", "content_save", "content_approve"];
+  "content_ai", "content_save", "content_approve",
+  // v772: design recommendations / adjustments
+  "design_ai"];
 const MK_INBOX_ACTIONS = ["inbox_list", "messages_list", "thread_get", "message_mark", "reply"];
 async function mkCall(action, payload, fnOverride) {
   const fn = fnOverride
@@ -3687,6 +3689,7 @@ async function loadMarketingTab() {
     }
     const t = await mkCall("template_get", {});
     mkTemplate = t.template || null;
+    mkCampaignOptions = Array.isArray(t.campaigns) ? t.campaigns : [];   // v772
     if (Array.isArray(t.fonts) && t.fonts.length) mkFonts = t.fonts;
     mkRender();
     mkRenderTemplateStep();
@@ -3851,6 +3854,101 @@ function mkShowSubtab(key) {
 // law requires both, so they are not options.
 // ---------------------------------------------------------------------------
 var mkDesignDraft = null;
+var mkCampaignOptions = [];   // v772: [{ norm, name, active }] from template_get
+var mkAiDesignOptions = [];   // v772: the designs the AI last suggested
+
+// v772 (owner): the AI recommends a design from the client's campaign, business
+// and website, or adjusts the one they are building by hand. Nothing is saved
+// until the client picks one and presses Save design.
+function mkAiDesignCardHtml() {
+  const site = (mkTemplate && mkTemplate.website_url) || "";
+  return `
+    <div style="margin-bottom:20px; padding:14px 16px; border-radius:10px; border:1px solid var(--border-light); background:var(--inset);">
+      <div style="font-weight:700; font-size:13px; margin-bottom:3px;">Design it with AI</div>
+      <div style="font-size:12px; color:var(--text-2); line-height:1.55; margin-bottom:10px;">
+        Our AI looks at your campaign, your business and your website &mdash; its colours, logo and wording &mdash;
+        and suggests three designs. Pick one, adjust anything below, then save. Prefer to design it yourself?
+        Change the settings below and ask the AI to help with any part of it.
+      </div>
+      <label for="mkWebsiteUrl">Your website <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
+      <input type="text" id="mkWebsiteUrl" maxlength="300" value="${escapeHtml(site)}" placeholder="yourcompany.com" autocapitalize="off" spellcheck="false">
+      <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn-secondary" id="mkAiRecommendBtn" style="width:auto; padding:7px 14px; font-size:12px;">Recommend designs for me</button>
+        <span id="mkAiDesignMsg" style="font-size:12px; color:var(--text-2);"></span>
+      </div>
+      <label for="mkAiDesignAsk" style="margin-top:12px;">Or tell the AI what to change in your design</label>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start;">
+        <input type="text" id="mkAiDesignAsk" maxlength="500" placeholder="e.g. make it feel more premium, use navy and gold, friendlier sign-off" style="flex:1 1 260px; min-width:0;">
+        <button class="btn-secondary" id="mkAiAssistBtn" style="width:auto; padding:7px 14px; font-size:12px;">Ask AI</button>
+      </div>
+      <div id="mkAiDesignOptions" style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;"></div>
+    </div>`;
+}
+
+function mkRenderAiDesignOptions() {
+  const box = document.getElementById("mkAiDesignOptions");
+  if (!box) return;
+  box.innerHTML = mkAiDesignOptions.map((o, i) => `
+    <div style="flex:1 1 220px; min-width:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface, var(--bg));">
+      <div style="height:230px; overflow:hidden; pointer-events:none; border-bottom:1px solid var(--border);">
+        <div style="transform:scale(.55); transform-origin:top left; width:182%;">${mkDesignPreviewHtml(o.design)}</div>
+      </div>
+      <div style="padding:10px 12px;">
+        <div style="font-weight:700; font-size:12.5px;">${escapeHtml(o.name)}</div>
+        <div style="font-size:11.5px; color:var(--text-2); margin:3px 0 9px; line-height:1.45;">${escapeHtml(o.why)}</div>
+        <button class="btn-primary" data-mk-ai-use="${i}" style="width:auto; padding:6px 13px; font-size:11.5px; margin-top:0;">Use this design</button>
+      </div>
+    </div>`).join("");
+  box.querySelectorAll("[data-mk-ai-use]").forEach((b) => {
+    b.onclick = () => {
+      const o = mkAiDesignOptions[Number(b.dataset.mkAiUse)];
+      if (!o) return;
+      mkApplyDesignToForm(o.design);
+      const msg = document.getElementById("mkDesignMsg");
+      if (msg) { msg.style.color = "var(--away)"; msg.textContent = `“${o.name}” applied — review it, then Save design to keep it.`; }
+      const save = document.getElementById("mkDesignSaveBtn");
+      if (save) save.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+  });
+}
+
+// Puts a design into the editor fields without re-rendering the step, so words
+// typed into the email section below are not lost.
+function mkApplyDesignToForm(design) {
+  mkDesignDraft = Object.assign(mkDesignDefaults(), mkDesignDraft || {}, design || {});
+  document.querySelectorAll("#mkTemplateBody [data-dz]").forEach((el) => {
+    const v = mkDesignDraft[el.dataset.dz];
+    if (v !== undefined && v !== null) el.value = v;
+  });
+  mkRenderDesignPreview();
+}
+
+async function mkRunDesignAi(mode) {
+  const msg = document.getElementById("mkAiDesignMsg");
+  const btns = [document.getElementById("mkAiRecommendBtn"), document.getElementById("mkAiAssistBtn")];
+  const setMsg = (t, c) => { if (msg) { msg.style.color = c || "var(--text-2)"; msg.textContent = t; } };
+  const instructions = mode === "assist" ? ((document.getElementById("mkAiDesignAsk") || {}).value || "").trim() : "";
+  if (mode === "assist" && !instructions) { setMsg("Tell the AI what you would like to change.", "var(--danger)"); return; }
+  btns.forEach((b) => { if (b) b.disabled = true; });
+  setMsg(mode === "assist" ? "Adjusting your design…" : "Reading your campaign and website, designing… this takes a few seconds.");
+  try {
+    const res = await mkCall("design_ai", {
+      mode, instructions,
+      website_url: ((document.getElementById("mkWebsiteUrl") || {}).value || "").trim(),
+      current_design: mkDesignDraft,
+      campaign: ((document.getElementById("mkCCampaign") || {}).value || "") || undefined,
+    });
+    mkAiDesignOptions = res.options || [];
+    mkRenderAiDesignOptions();
+    const note = res.website && res.website.note ? " " + res.website.note : "";
+    setMsg((mode === "assist" ? "Here is your adjusted design." : "Here are three designs to choose from.") + note,
+      res.website && res.website.note && !res.website.read ? "var(--away)" : "var(--success)");
+  } catch (e) {
+    setMsg(e.message, "var(--danger)");
+  } finally {
+    btns.forEach((b) => { if (b) b.disabled = false; });
+  }
+}
 
 function mkDesignDefaults() {
   return {
@@ -3966,7 +4064,8 @@ function wireMarketingContent() {
     msg.style.color = "var(--text-2)";
     msg.textContent = "Writing\u2026 this takes a few seconds.";
     try {
-      await mkCall("content_ai", { instructions });
+      const campaign = ((document.getElementById("mkCCampaign") || {}).value || "") || undefined;   // v772
+      await mkCall("content_ai", { instructions, campaign });
       await loadMarketingTab();
     } catch (e) {
       aiBtn.disabled = false;
@@ -4031,6 +4130,7 @@ function wireMarketingContent() {
       automatically &mdash; the law requires both.
       ${mkTemplate ? `<span style="color:var(--success);">Saved ${new Date(mkTemplate.updated_at).toLocaleString()}.</span>` : ""}
     </div>
+    ${mkAiDesignCardHtml()}
     <div style="display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start;">
       <div style="flex:1 1 300px; min-width:0;">
         <label for="mkLogoFile">Logo</label>
@@ -4095,6 +4195,13 @@ function wireMarketingContent() {
       every campaign we send for you starts from this.
     </div>
     ${mkContentStatusHtml()}
+    ${mkCampaignOptions.length ? `
+    <label for="mkCCampaign">Which campaign is this email for?</label>
+    <select id="mkCCampaign">${mkCampaignOptions.map((c) => {
+      const sel = (mkTemplate && mkTemplate.content_campaign) ? mkTemplate.content_campaign === c.norm : c === mkCampaignOptions[0];
+      return `<option value="${escapeHtml(c.norm)}"${sel ? " selected" : ""}>${escapeHtml(c.name)}${c.active ? "" : " (not active)"}</option>`;
+    }).join("")}</select>
+    <div style="font-size:11px; color:var(--text-2); margin:3px 0 10px; line-height:1.5;">The AI writes from what we know about this campaign &mdash; its guide, your answers when you set it up, our team&rsquo;s notes, your website, and how your past emails did.</div>` : ""}
     <label for="mkCInstructions">What should the email say?</label>
     <textarea class="modal-textarea" id="mkCInstructions" rows="3" maxlength="4000" placeholder="e.g. friendly and short, mention our 20-year warranty, ask for a free roof inspection">${escapeHtml((mkTemplate && mkTemplate.instructions) || "")}</textarea>
     <div style="margin:10px 0 18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -4124,6 +4231,10 @@ function wireMarketingContent() {
       <span id="mkCMsg" style="font-size:12px; color:var(--text-2);"></span>
     </div>`;
   wireMarketingContent();   // v765
+  // v772: design with AI
+  document.getElementById("mkAiRecommendBtn").onclick = () => mkRunDesignAi("recommend");
+  document.getElementById("mkAiAssistBtn").onclick = () => mkRunDesignAi("assist");
+  mkRenderAiDesignOptions();
 
   // oninput, not addEventListener: this box is re-rendered on every load and
   // would otherwise collect one more listener each time.
@@ -4174,7 +4285,8 @@ async function mkSaveDesign() {
   msg.style.color = "var(--text-2)";
   msg.textContent = "Saving…";
   try {
-    await mkCall("template_save", { design: mkDesignDraft });
+    const siteEl = document.getElementById("mkWebsiteUrl");   // v772: the website is kept with the design
+    await mkCall("template_save", siteEl ? { design: mkDesignDraft, website_url: siteEl.value.trim() } : { design: mkDesignDraft });
     await loadMarketingTab();
     const m = document.getElementById("mkDesignMsg");
     if (m) {
