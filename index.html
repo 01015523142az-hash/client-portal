@@ -5575,9 +5575,10 @@ function showApp() {
   }
   refreshMarketingNav();   // v757: show Email Marketing only to a client with a seat
 
-  loadData();
+  clientDataReady = loadData();   // v773: the Remi reminder waits for it
   loadSkiptraceAccount();
   initClientChatWidget();
+  remiRemindOnSignIn();   // v773
   initNotifCenter();
   initRealtimeSync();
   initGuidedTour();
@@ -10444,6 +10445,115 @@ function dismissChatTeaser() {
   setTimeout(() => { teaser.classList.remove("show", "hide"); }, 220);
 }
 
+// ---------------------------------------------------------------------------
+// v773 (owner): Remi reminds the client of what is waiting for them -- tickets
+// to answer and payments to make -- every time they sign in. "Sign in" means a
+// new auth session (the JWT's session_id), so the password form and a staff
+// "Log in as" both count, while a refresh or a second tab does not. The same
+// list sits at the top of Remi's home screen for as long as anything is pending.
+// ---------------------------------------------------------------------------
+var clientDataReady = null;   // loadData()'s promise, set by showApp()
+var remiPending = [];
+
+function remiComputePending() {
+  const items = [];
+  const n = (x, one, many) => `${x} ${x === 1 ? one : many}`;
+  if (typeof ticketRows !== "undefined" && ticketRows.length) {
+    items.push({ kind: "tickets", text: `${n(ticketRows.length, "ticket is", "tickets are")} waiting for your Yes or No`,
+      go: () => navigateToClientTab("tickets") });
+  }
+  (typeof campaignPendingPaymentsCache !== "undefined" ? campaignPendingPaymentsCache : []).forEach((p) => {
+    items.push({ kind: "draft", text: `“${p.campaign_name}” is a draft — payment wasn't completed`,
+      go: () => openCampaignDraftPrompt(p.id) });
+  });
+  (typeof campaignSubscriptionsCache !== "undefined" ? campaignSubscriptionsCache : []).forEach((s) => {
+    if (s.has_unpaid_invoice || s.unpaid_one_off_charge_cents) {
+      items.push({ kind: "unpaid", text: `A payment on “${s.campaign_display_name}” didn't go through`,
+        go: () => navigateToClientTab("billing", s.has_unpaid_invoice ? "invoices" : "pending-payment") });
+    }
+  });
+  const charges = (typeof oneOffChargesCache !== "undefined" ? oneOffChargesCache : []).filter((c) => c.status === "pending");
+  // A failed caller-change charge is already named on its subscription above.
+  const loose = charges.filter((c) => !c.subscription_id
+    || !(campaignSubscriptionsCache || []).some((s) => s.id === c.subscription_id && s.unpaid_one_off_charge_cents));
+  if (loose.length) {
+    items.push({ kind: "charges", text: `${n(loose.length, "payment", "payments")} from our team to pay`,
+      go: () => navigateToClientTab("billing", "pending-payment") });
+  }
+  const orders = (typeof listOrders !== "undefined" ? listOrders : []).filter((o) => o.status === "pending_payment");
+  if (orders.length) {
+    items.push({ kind: "orders", text: `${n(orders.length, "list order is", "list orders are")} waiting for payment`,
+      go: () => navigateToClientTab("billing", "pending-payment") });
+  }
+  remiPending = items;
+  return items;
+}
+
+function remiSessionId() {
+  return sb.auth.getSession().then(({ data }) => {
+    const tok = data && data.session && data.session.access_token;
+    if (!tok) return null;
+    try {
+      const p = JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return p.session_id || null;
+    } catch (e) { return null; }
+  }).catch(() => null);
+}
+
+async function remiRemindOnSignIn() {
+  if (!currentClient) return;
+  const sid = await remiSessionId();
+  const key = "pt.remiReminded";
+  const stamp = `${currentClient.id}:${sid || "nosession"}`;
+  try { if (sid && localStorage.getItem(key) === stamp) return; } catch (e) {}
+  // Wait for what the reminder is about: tickets arrive with loadData();
+  // payments are asked for here, so Billing does not have to be opened first.
+  try { if (clientDataReady) await clientDataReady; } catch (e) {}
+  await Promise.all([
+    loadMyCampaignSubscriptions().catch(() => {}),
+    (typeof loadListOrders === "function" ? loadListOrders() : Promise.resolve()).catch(() => {}),
+  ]);
+  if (!currentClient) return;   // signed out meanwhile
+  try { localStorage.setItem(key, stamp); } catch (e) {}
+  const items = remiComputePending();
+  if (clientChatView === "home") renderClientChatHome();
+  if (!items.length) return;
+  const teaser = document.getElementById("chatTeaser");
+  const title = teaser.querySelector(".chat-teaser-title");
+  const msg = teaser.querySelector(".chat-teaser-msg");
+  const first = String(currentClient.full_name || "").trim().split(/\s+/)[0];
+  if (title) title.textContent = "Remi";
+  if (msg) {
+    msg.textContent = items.length === 1
+      ? `${first ? first + ", " : ""}${items[0].text}. Tap to sort it out.`
+      : `${first ? first + ", you" : "You"} have ${items.length} things waiting — ${items[0].text.charAt(0).toLowerCase() + items[0].text.slice(1)}, and more. Tap to see.`;
+  }
+  try { sessionStorage.setItem("clientChatTeaserShown", "1"); } catch (e) {}   // no generic bubble on top
+  if (clientChatPanelOpen) { if (clientChatView === "home") renderClientChatHome(); return; }
+  teaser.classList.remove("hide");
+  teaser.classList.add("show");
+  if (typeof addNotifCenterItem === "function") {
+    addNotifCenterItem({
+      icon: "\u{1F916}",
+      title: items.length === 1 ? "1 thing is waiting for you" : `${items.length} things are waiting for you`,
+      body: items.map((i) => i.text).join(" · "),
+      onClick: () => { const fab = document.getElementById("chatFabBtn"); if (fab && !clientChatPanelOpen) fab.click(); },
+      playSound: false,
+    });
+  }
+}
+
+function remiPendingSectionHtml() {
+  const items = remiComputePending();
+  if (!items.length) return "";
+  return '<div class="chat-home-section"><div class="chat-home-section-head"><span class="chat-home-section-title">Waiting for you</span></div>'
+    + '<div class="chat-conv-list">'
+    + items.map((it, i) => '<button type="button" class="chat-conv-row" data-chat-action="pending" data-pending-idx="' + i + '">'
+      + '<span class="chat-conv-row-main"><span class="chat-conv-row-title" style="white-space:normal;">' + escapeHtml(it.text) + '</span></span>'
+      + '<span class="chat-conv-row-go">' + CLIENT_CHAT_ICON_CHEVRON + '</span></button>').join("")
+    + '</div></div>';
+}
+
 async function initClientChatWidget() {
   document.getElementById("chatFabBtn").addEventListener("click", () => {
     dismissChatTeaser();
@@ -10805,6 +10915,7 @@ function renderClientChatHome() {
     + '<div class="chat-home-hi">' + (first ? "Welcome, " + escapeHtml(first) : "Welcome") + ' 👋</div>'
     + '<div class="chat-home-sub">I\'m Remi, your PropTech AI assistant. Ask me about your campaigns, leads or billing, and I\'ll bring in our team whenever you want a person.</div>'
     + '</div>';
+  html += remiPendingSectionHtml();   // v773
 
   if (open && (clientChatMessages.length || routed)) {
     const who = routed
@@ -10860,6 +10971,14 @@ function onClientChatHomeClick(e) {
   const act = e.target.closest("[data-chat-action]");
   if (!act) return;
   const a = act.dataset.chatAction;
+  if (a === "pending") {   // v773: go and deal with it
+    const it = remiPending[Number(act.dataset.pendingIdx)];
+    if (!it) return;
+    clientChatPanelOpen = false;
+    document.getElementById("chatPanel").style.display = "none";
+    it.go();
+    return;
+  }
   if (a === "continue") setClientChatView("conv");
   else if (a === "new") startNewClientChat();
   else if (a === "all") setClientChatView("all");
