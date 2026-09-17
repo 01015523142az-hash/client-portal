@@ -439,6 +439,72 @@
   .btn-outline.btn-gold{ background:var(--gold-dim); border-color:var(--gold-dim); color:var(--gold); }
   .btn-outline.btn-gold:hover:not(:disabled){ filter:brightness(1.06); border-color:var(--gold); }
 
+  /* ===== v776: three button classes were being used with NO rule behind
+     them, so those buttons fell back to the browser's own chrome — a flat
+     white box with black text, in a dark portal, sitting next to a proper
+     gold pill. The owner sent screenshots of two of them.
+
+     1. .btn-secondary — 6 uses (Save changes next to Approve this email,
+        Write it for me with AI, Recommend designs for me, Ask AI, Draft my
+        campaign guide with AI, and the campaign-guide Add button) and no
+        rule anywhere in this file. The staff portal has had one all along;
+        this is the same idea in this portal's own shape: the quiet partner
+        to .btn-primary, same pill, same height.
+     2. .btn-gold on its own — the Resume-canceled submit button says
+        class="btn-gold" without .btn-outline, and the only gold rules are
+        .btn-outline.btn-gold, so none of them applied. Made to stand alone.
+     3. .btn-fill — only ever styled under .ticket-card .tc-actions, but
+        also used for the Answer button on the incoming-call card, which is
+        nowhere near a ticket card.
+
+     And the alignment problem in the second screenshot: .btn-primary carries
+     width:100% + margin-top:22px for the login form it was written for, so
+     every primary dropped into a row of buttons sat 22px BELOW its
+     neighbours. Six call sites pass width:auto without also zeroing the
+     margin; rather than patch each one, any .btn-primary that has opted out
+     of full width has its top margin cleared here. ===== */
+  .btn-secondary{
+    font-family:var(--sans-ui);
+    background:var(--inset); color:var(--text); border:1.5px solid var(--border-light);
+    padding:9px 18px; border-radius:999px; font-size:12.5px; font-weight:600; letter-spacing:.2px;
+    transition:border-color .15s ease, color .15s ease, background-color .15s ease, transform .1s ease;
+  }
+  .btn-secondary:hover:not(:disabled){ border-color:var(--gold); color:var(--gold); background:var(--gold-dim); }
+  .btn-secondary:active:not(:disabled){ transform:scale(.98); }
+  .btn-secondary:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-gold{
+    font-family:var(--sans-ui);
+    background:var(--gold-dim); border:1.5px solid var(--gold-dim); color:var(--gold);
+    padding:8px 16px; border-radius:10px; font-size:12px; font-weight:600;
+    transition:filter .15s ease, border-color .15s ease;
+  }
+  .btn-gold:hover:not(:disabled){ filter:brightness(1.06); border-color:var(--gold); }
+  .btn-gold:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-fill{
+    font-family:var(--sans-ui);
+    background:var(--focus); color:#2B0A0A; border:1.5px solid var(--focus);
+    padding:9px 18px; border-radius:999px; font-size:12.5px; font-weight:700;
+    transition:filter .15s ease, transform .1s ease;
+  }
+  .btn-fill:hover:not(:disabled){ filter:brightness(1.08); }
+  .btn-fill:active:not(:disabled){ transform:scale(.98); }
+  .btn-primary[style*="width:auto"]{ margin-top:0; }
+  /* One shape for a row of buttons, so neighbours line up on the same
+     baseline and wrap together on a narrow screen instead of each call site
+     inventing its own flex/gap/margin. */
+  .btn-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .btn-row > button{ margin-top:0; }
+  /* Buttons sitting side by side should be the same shape. .btn-primary and
+     .btn-secondary are pills; .btn-outline and .btn-gold are 10px-radius
+     rectangles. In a row, the rectangles follow the pills. */
+  .btn-row > .btn-outline, .btn-row > .btn-gold{ border-radius:999px; padding:9px 18px; font-size:12.5px; }
+  /* .btn-outline/.btn-gold/.btn-secondary carry a 1.5px border and
+     .btn-primary carries none, which made a primary 2px shorter than the
+     button beside it. A transparent border of the same width evens them up
+     without changing how it looks. Scoped to rows and modal footers so the
+     full-width primary on its own is untouched. */
+  .btn-row > .btn-primary, .modal-actions .btn-primary{ border:1.5px solid transparent; }
+
   /* v112: subtabs inside the Leads tab (My Leads / Campaign Guide / Leads
      Comments) — same idea as nav.tabs, smaller and inline rather than a
      full second header bar. */
@@ -543,6 +609,31 @@
   .panel:hover{ border-color:var(--border-light); box-shadow:0 12px 28px -20px rgba(0,0,0,.4); }
   @keyframes panelIn{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
   @media (prefers-reduced-motion: reduce){ .panel{ animation:none; } }
+  /* ===== v776: .card had no rule in this portal at all, but five things
+     use it — the pending-payment card, the unpaid one-off charge, the draft
+     campaign card, a saved payment method, and each campaign subscription.
+     Every one of them sets `border-color: var(--warning)` inline, which does
+     nothing without a border-width and a border-style, so they rendered as
+     plain unbordered text runs with no background and no padding. A card
+     inside a .panel, so tighter than one and with no entrance animation of
+     its own (a list of them all sliding in at once reads as jitter). ===== */
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px;
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  .panel .card{ background:var(--inset); }
+  .card:hover{ border-color:var(--border-light); }
+  /* ===== v776: same story for .msg — 23 elements in the markup and 34
+     `className = "msg error"` assignments in the code, with no .msg rule
+     anywhere. Every inline form message in this portal (a failed save, a
+     rejected code, a campaign-guide error) was rendering as unstyled body
+     text. .err-msg/.ok-msg above already describe what these should look
+     like; this reuses them so the two never drift apart. `.hidden` still
+     wins over the display here, because it is !important. ===== */
+  .msg{ margin-top:12px; padding:10px 12px; border-radius:8px; font-size:13px; line-height:1.5; background:var(--inset); color:var(--text-2); }
+  .msg:empty{ display:none; }
+  .msg.error{ background:var(--danger-dim); color:var(--danger); }
+  .msg.success{ background:var(--success-dim); color:var(--success); }
   .panel-title{ font-family:var(--mono); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:var(--text-2); margin:0 0 16px; }
 
   .bar-row{ display:flex; align-items:center; gap:12px; margin-bottom:10px; }
@@ -757,8 +848,18 @@
     border:1px solid var(--border-light); border-radius:10px; background:var(--inset); color:var(--text);
     font-family:var(--sans); font-size:13px; resize:vertical;
   }
-  .modal-actions{ display:flex; gap:10px; margin-top:16px; justify-content:flex-end; }
+  .modal-actions{ display:flex; gap:10px; margin-top:16px; justify-content:flex-end; flex-wrap:wrap; }
   .modal-actions button{ width:auto; margin-top:0; padding:10px 18px; }
+  /* v776: a modal footer holds a pill primary next to a ghost Cancel, and
+     every one of those ghosts was carrying an inline
+     `border:1px solid …; border-radius:10px` to give itself a border the
+     class already provides — which also squared it off next to the pill.
+     The inline rules are gone from the markup; this keeps every footer
+     button the same pill, whichever class it uses. */
+  .modal-actions .btn-ghost,
+  .modal-actions .btn-outline,
+  .modal-actions .btn-gold,
+  .modal-actions .btn-secondary{ border-radius:999px; font-size:12.5px; }
   .dispute-thread{ display:flex; flex-direction:column; gap:14px; max-height:320px; overflow-y:auto; margin:16px 0; }
   .dispute-msg{ max-width:80%; border-radius:12px; padding:14px 16px; font-size:13.5px; border:1px solid var(--border); line-height:1.6; }
   .dispute-msg.mine{ align-self:flex-end; background:var(--focus-dim); border-color:var(--focus); }
@@ -3731,7 +3832,11 @@ async function mkLoadAccess() {
 // subscription changes, so buying (or cancelling) a seat takes effect live.
 async function refreshMarketingNav() {
   try { await mkLoadAccess(); } catch (e) { return; }
-  const show = Boolean(mkAccess && mkAccess.has_access);
+  // v776: a seat is still what entitles them to it; staff closing the tab for
+  // this client in Edit client hides it on top of that. Checked here as well
+  // as in applyClientPortalSectionGating because this runs on its own
+  // whenever a subscription changes, after that pass is long finished.
+  const show = Boolean(mkAccess && mkAccess.has_access) && (typeof clientTabAllowed !== "function" || clientTabAllowed("marketing"));
   ["marketingNavLabel", "marketingNavGroup"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = show ? "" : "none";
@@ -4288,9 +4393,9 @@ function wireMarketingContent() {
         <input id="mkCButtonUrl" maxlength="1000" placeholder="https://" value="${escapeHtml((mkTemplate && mkTemplate.button_url) || "")}">
       </div>
     </div>
-    <div style="margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-      <button class="btn-secondary" id="mkCSaveBtn" style="width:auto; padding:8px 16px;">Save changes</button>
-      <button class="btn-primary" id="mkCApproveBtn" style="width:auto; padding:8px 16px; margin-top:0;">Approve this email</button>
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn-secondary" id="mkCSaveBtn" style="width:auto; padding:9px 18px;">Save changes</button>
+      <button class="btn-primary" id="mkCApproveBtn" style="width:auto; padding:9px 18px;">Approve this email</button>
       <span id="mkCMsg" style="font-size:12px; color:var(--text-2);"></span>
     </div>`;
   wireMarketingContent();   // v765
@@ -5466,7 +5571,70 @@ function applyAccountTypeNavGating() {
   // reports_enabled for this specific client (Edit client modal).
   const reportsNavBtn = document.querySelector('nav.tabs > button[data-tab="reports"]');
   if (reportsNavBtn) reportsNavBtn.style.display = currentClient.reports_enabled ? "" : "none";
+  // v776: on top of everything above, staff can close a tab or a single
+  // subtab for THIS client from User Management > Clients > Edit client.
+  // Applied last and only ever hides — the rules above stay in charge of
+  // what a client is entitled to, this just narrows it further.
+  applyClientPortalSectionGating();
   return isSkiptraceOnlyAccount;
+}
+
+// v776: client_accounts.portal_sections, as
+//   { "<tab>": { "view": bool, "subtabs": { "<sub>": bool } } }
+// A missing key means "show it", so a client whose column is still {} — or a
+// database that has not had the v776 migration yet — behaves exactly as
+// before this existed.
+function clientPortalSections() {
+  const s = currentClient && currentClient.portal_sections;
+  return s && typeof s === "object" ? s : {};
+}
+function clientTabAllowed(tabKey) {
+  const cur = clientPortalSections()[tabKey];
+  return cur && typeof cur.view === "boolean" ? cur.view : true;
+}
+function clientSubtabAllowed(tabKey, subKey) {
+  if (!clientTabAllowed(tabKey)) return false;
+  const subs = (clientPortalSections()[tabKey] || {}).subtabs || {};
+  return typeof subs[subKey] === "boolean" ? subs[subKey] : true;
+}
+const CLIENT_SUBTAB_ATTRS = {
+  leads: "data-leads-subtab",
+  buylist: "data-buylist-subtab",
+  skiptrace: "data-skiptrace-subtab",
+  marketing: "data-marketing-subtab",
+  billing: "data-billing-subtab",
+};
+function applyClientPortalSectionGating() {
+  const sections = clientPortalSections();
+  if (!Object.keys(sections).length) return;   // nothing restricted for this client
+  Object.keys(sections).forEach((tabKey) => {
+    const allowed = clientTabAllowed(tabKey);
+    if (!allowed) {
+      // Hide the button, and the whole side-nav group when the button is the
+      // group's own header (Opportunities, Buy a list, Skip Tracing, Email
+      // Marketing, Billing all sit inside one) — otherwise the subnav would
+      // be left behind with no parent.
+      const btn = document.querySelector(`nav.tabs button[data-tab="${tabKey}"]`);
+      if (btn) {
+        const group = btn.closest(".side-nav-group");
+        if (group) group.style.display = "none";
+        else btn.style.display = "none";
+      }
+    }
+    const attr = CLIENT_SUBTAB_ATTRS[tabKey];
+    if (!attr) return;
+    document.querySelectorAll(`button[${attr}]`).forEach((b) => {
+      const ok = allowed && clientSubtabAllowed(tabKey, b.getAttribute(attr));
+      b.style.display = ok ? "" : "none";
+      // A hidden subtab must not be the one left marked active, or the tab
+      // opens onto a panel this client is not supposed to see.
+      if (!ok) b.classList.remove("active");
+    });
+    if (allowed) {
+      const shown = Array.from(document.querySelectorAll(`button[${attr}]`)).filter((b) => b.style.display !== "none");
+      if (shown.length && !shown.some((b) => b.classList.contains("active"))) shown[0].classList.add("active");
+    }
+  });
 }
 // v317: a skip-trace-only account can now create a campaign (Billing ->
 // Subscriptions' empty state, since Dashboard is gated off for them) --
@@ -5673,6 +5841,17 @@ function showApp() {
     document.getElementById("tab-skiptrace").classList.remove("hidden");
   }
   restoreClientPage();   // v714: a refresh reopens the page this tab was on
+  // v776: Dashboard is the landing tab in the markup, so a client whose
+  // Dashboard staff closed would otherwise open onto a hidden panel. Land on
+  // the first tab they can actually see instead.
+  {
+    const activeBtn = document.querySelector("nav.tabs button[data-tab].active");
+    const visible = Array.from(document.querySelectorAll("nav.tabs button[data-tab]")).filter((b) => {
+      const group = b.closest(".side-nav-group");
+      return b.style.display !== "none" && (!group || group.style.display !== "none");
+    });
+    if (visible.length && (!activeBtn || !visible.includes(activeBtn))) visible[0].click();
+  }
   // v770: this tab came back from Stripe by itself (no opener) without paying.
   if (checkoutReturnNav) {
     const nav = checkoutReturnNav;
@@ -5961,7 +6140,7 @@ function renderBillingPendingListOrders() {
         </div>
         <div style="font-size:11px; color:var(--text-2); margin-top:8px;">This request won't start until payment is completed — no charge has been made yet.</div>
         <div style="margin-top:10px;">
-          <button class="btn-primary list-order-pending-pay-btn" data-id="${o.id}" style="width:auto; padding:6px 14px; font-size:11px;">Complete payment</button>
+          <button class="btn-primary list-order-pending-pay-btn" data-id="${o.id}" style="width:auto; padding:8px 16px; font-size:12px;">Complete payment</button>
         </div>
         <div class="msg hidden" data-order-msg="${o.id}" style="margin-top:10px;"></div>
       </div>`;
@@ -6058,7 +6237,7 @@ function renderListOrders() {
         </div>
         ${o.status === "pending_payment" ? `
         <div style="font-size:11px; color:var(--text-2); margin-top:8px;">This request won't start until payment is completed — no charge has been made yet.</div>
-        <div style="margin-top:8px;"><button class="btn-primary list-order-pending-pay-btn" data-id="${o.id}" style="width:auto; padding:6px 14px; font-size:11px;">Complete payment</button></div>
+        <div class="btn-row" style="margin-top:8px;"><button class="btn-primary list-order-pending-pay-btn" data-id="${o.id}" style="width:auto; padding:8px 16px; font-size:12px;">Complete payment</button></div>
         <div class="msg hidden" data-order-msg="${o.id}" style="margin-top:8px;"></div>` : ""}
         ${pendingNote}
       </div>`;
@@ -6768,7 +6947,7 @@ async function openCreateCampaignModal(arg) {
 
     <div class="msg" id="campaignModalMsg"></div>
     <div class="modal-actions">
-      <button class="btn-ghost" onclick="closeCreateCampaignModal()" style="border:1px solid var(--border-light); border-radius:10px;">Cancel</button>
+      <button class="btn-ghost" onclick="closeCreateCampaignModal()">Cancel</button>
       <button class="btn-primary" id="submitCampaignBtn">Continue to payment</button>
     </div>
   `;
@@ -7405,7 +7584,7 @@ function renderOneOffCharges() {
           </div>
           <div style="text-align:right; font-size:11px; color:var(--warning, #d9a02c); font-weight:700;">${ONE_OFF_CHARGE_STATUS_LABEL[c.status] || c.status}</div>
         </div>
-        <div style="margin-top:10px;"><button class="btn-primary one-off-charge-pay-btn" data-id="${c.id}" style="width:auto; padding:6px 14px; font-size:11px;">Pay now</button></div>
+        <div style="margin-top:10px;"><button class="btn-primary one-off-charge-pay-btn" data-id="${c.id}" style="width:auto; padding:8px 16px; font-size:12px;">Pay now</button></div>
         <div class="msg hidden" data-charge-msg="${c.id}" style="margin-top:10px;"></div>
       </div>`;
   }).join("");
@@ -7470,9 +7649,13 @@ function campaignDraftCardHtml(p, where) {
           </div>
         </div>
         <div style="font-size:11px; color:var(--text-2); margin-top:8px;">Payment wasn't completed, so this campaign hasn't started and nothing has been charged. Your answers${where === "subs" ? " and campaign guide" : ""} are saved — pick up where you left off.</div>
-        <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-          <button class="btn-primary campaign-pending-pay-btn" data-id="${p.id}" style="width:auto; padding:6px 14px; font-size:11px;">Complete payment</button>
-          <button class="btn-outline campaign-draft-amend-btn" data-id="${p.id}" style="width:auto; padding:6px 14px; font-size:11px;">Amend my campaign</button>
+        <!-- v776: was a bare flex div, so the gold pill and the square
+             outline button were different shapes AND different heights
+             (.btn-primary's own margin-top:22px pushed it down). .btn-row
+             fixes both for every pair like this. -->
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn-primary campaign-pending-pay-btn" data-id="${p.id}" style="width:auto; padding:8px 16px; font-size:12px;">Complete payment</button>
+          <button class="btn-outline campaign-draft-amend-btn" data-id="${p.id}" style="width:auto; padding:8px 16px; font-size:12px;">Amend my campaign</button>
         </div>
         <div class="msg hidden" data-campaign-pending-msg="${p.id}" style="margin-top:10px;"></div>
       </div>`;
@@ -7583,7 +7766,7 @@ async function openCampaignDraftPrompt(draftId) {
     <div style="font-size:12px; color:var(--text-2); margin:-4px 0 4px;">${escapeHtml(CAMPAIGN_TIER_LABEL[draft.caller_tier] || draft.caller_tier)} · ${escapeHtml(campaignDraftAddOns(draft))}</div>
     <div class="msg hidden" id="campDraftPromptMsg"></div>
     <div class="modal-actions" style="flex-wrap:wrap;">
-      <button class="btn-ghost" id="campDraftPromptLater" style="border:1px solid var(--border-light); border-radius:10px;">Later</button>
+      <button class="btn-ghost" id="campDraftPromptLater">Later</button>
       <button class="btn-outline" id="campDraftPromptAmend" style="width:auto;">Amend my campaign</button>
       <button class="btn-primary" id="campDraftPromptPay" style="width:auto;">Click here to complete payment</button>
     </div>`;
@@ -8902,7 +9085,7 @@ async function openNotifPrefsModal() {
     <div id="notifPrefsRows"></div>
     <div class="msg" id="notifPrefsMsg"></div>
     <div class="modal-actions">
-      <button class="btn-ghost" onclick="closeNotifPrefsModal()" style="border:1px solid var(--border-light); border-radius:10px;">Close</button>
+      <button class="btn-ghost" onclick="closeNotifPrefsModal()">Close</button>
       <button class="btn-primary" id="notifPrefsSaveBtn">Save</button>
     </div>
   `;
@@ -9353,7 +9536,7 @@ function showAppConfirmModal(message, confirmLabel) {
     document.getElementById("appConfirmModalBox").innerHTML = `
       <div class="modal-sub" style="margin-bottom:0;">${escapeHtml(message)}</div>
       <div class="modal-actions">
-        <button class="btn-ghost" style="border:1px solid var(--border-light); border-radius:10px;" onclick="closeAppConfirmModal(false)">Cancel</button>
+        <button class="btn-ghost" onclick="closeAppConfirmModal(false)">Cancel</button>
         <button class="btn-primary" onclick="closeAppConfirmModal(true)">${escapeHtml(confirmLabel || "Confirm")}</button>
       </div>
     `;
@@ -9938,7 +10121,7 @@ function openFileDisputeModal(leadId) {
     <textarea class="modal-textarea" id="disputeCommentInput" placeholder="Explain what's wrong and why…"></textarea>
     <div class="msg" id="disputeModalMsg"></div>
     <div class="modal-actions">
-      <button class="btn-ghost" onclick="closeDisputeModal()" style="border:1px solid var(--border-light); border-radius:10px;">Cancel</button>
+      <button class="btn-ghost" onclick="closeDisputeModal()">Cancel</button>
       <button class="btn-primary" id="submitDisputeBtn">Submit dispute</button>
     </div>
   `;
@@ -10020,10 +10203,10 @@ function renderDisputeConversation(dispute, messages) {
       <textarea class="modal-textarea" id="disputeReplyInput" placeholder="Reply…"></textarea>
       <div class="msg" id="disputeReplyMsg"></div>
       <div class="modal-actions">
-        <button class="btn-ghost" onclick="closeDisputeModal()" style="border:1px solid var(--border-light); border-radius:10px;">Close</button>
+        <button class="btn-ghost" onclick="closeDisputeModal()">Close</button>
         <button class="btn-primary" id="sendDisputeReplyBtn">Send reply</button>
       </div>
-    ` : `<div class="modal-actions"><button class="btn-ghost" onclick="closeDisputeModal()" style="border:1px solid var(--border-light); border-radius:10px;">Close</button></div>`}
+    ` : `<div class="modal-actions"><button class="btn-ghost" onclick="closeDisputeModal()">Close</button></div>`}
   `;
   if (dispute.status === "open") {
     document.getElementById("sendDisputeReplyBtn").addEventListener("click", async () => {
@@ -10064,7 +10247,7 @@ function openFileFeedbackModal(leadId) {
     <textarea class="modal-textarea" id="feedbackCommentInput" placeholder="Your feedback…"></textarea>
     <div class="msg" id="feedbackModalMsg"></div>
     <div class="modal-actions">
-      <button class="btn-ghost" onclick="closeDisputeModal()" style="border:1px solid var(--border-light); border-radius:10px;">Cancel</button>
+      <button class="btn-ghost" onclick="closeDisputeModal()">Cancel</button>
       <button class="btn-primary" id="submitFeedbackBtn">Submit feedback</button>
     </div>
   `;
@@ -10138,10 +10321,10 @@ function renderFeedbackConversation(feedback, messages) {
       <textarea class="modal-textarea" id="feedbackReplyInput" placeholder="Reply…"></textarea>
       <div class="msg" id="feedbackReplyMsg"></div>
       <div class="modal-actions">
-        <button class="btn-ghost" onclick="closeDisputeModal()" style="border:1px solid var(--border-light); border-radius:10px;">Close</button>
+        <button class="btn-ghost" onclick="closeDisputeModal()">Close</button>
         <button class="btn-primary" id="sendFeedbackReplyBtn">Send reply</button>
       </div>
-    ` : `<div class="modal-actions"><button class="btn-ghost" onclick="closeDisputeModal()" style="border:1px solid var(--border-light); border-radius:10px;">Close</button></div>`}
+    ` : `<div class="modal-actions"><button class="btn-ghost" onclick="closeDisputeModal()">Close</button></div>`}
   `;
   if (feedback.status === "open") {
     document.getElementById("sendFeedbackReplyBtn").addEventListener("click", async () => {
@@ -10290,7 +10473,7 @@ function buildCampaignGuideCardClient(g){
       <div id="cgEditFields-${escapeAttr(g.normName)}"></div>
       <div class="msg" id="cgEditMsg-${escapeAttr(g.normName)}"></div>
       <div class="modal-actions" style="margin-top:12px;">
-        <button class="btn-ghost" style="border:1px solid var(--border-light); border-radius:10px;" data-cg-cancel="${escapeAttr(g.normName)}">Cancel</button>
+        <button class="btn-ghost" data-cg-cancel="${escapeAttr(g.normName)}">Cancel</button>
         <button class="btn-primary" style="margin-top:0;" data-cg-save="${escapeAttr(g.normName)}">Submit for approval</button>
       </div>
     `;
@@ -12517,6 +12700,13 @@ function renderNotifCenter() {
 // classes for styling but a different data-*-subtab attribute per tab, so
 // this tries all four rather than needing the caller to know which one.
 function navigateToClientTab(tabName, subtabName) {
+  // v776: every programmatic jump goes through here — the guided tour, a
+  // notification's onClick, the saved-page restore after a refresh. None of
+  // them may open a tab staff closed for this client, which is how the tour
+  // used to click a skip-trace-only account straight back into Dashboard
+  // (see applyAccountTypeNavGating's own note on that bug).
+  if (typeof clientTabAllowed === "function" && !clientTabAllowed(tabName)) return;
+  if (subtabName && typeof clientSubtabAllowed === "function" && !clientSubtabAllowed(tabName, subtabName)) subtabName = null;
   const tabBtn = document.querySelector(`nav.tabs button[data-tab="${tabName}"]`);
   if (tabBtn) tabBtn.click();
   if (subtabName) {
