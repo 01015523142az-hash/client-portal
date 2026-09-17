@@ -5699,7 +5699,19 @@ window.addEventListener("pagehide", saveClientPage);
 document.addEventListener("visibilitychange", () => { if (document.hidden) saveClientPage(); });
 function restoreClientPage() {
   let st = null;
-  try { st = JSON.parse(sessionStorage.getItem(CLIENT_PAGE_KEY) || "null"); } catch (e) {}
+  // v781: ?tab=<tab>&sub=<subtab> opens that page once the client is signed in
+  // -- the Android app sends clients to ?tab=marketing&sub=setup. Read once and
+  // taken out of the address bar, so a later refresh behaves exactly as before.
+  const linkQs = new URLSearchParams(window.location.search);
+  if (linkQs.get("tab") && currentClient) {
+    st = { cid: currentClient.id, tab: linkQs.get("tab"), sub: linkQs.get("sub") };
+    linkQs.delete("tab");
+    linkQs.delete("sub");
+    const rest = linkQs.toString();
+    try { history.replaceState(null, "", window.location.pathname + (rest ? "?" + rest : "") + window.location.hash); } catch (e) {}
+  } else {
+    try { st = JSON.parse(sessionStorage.getItem(CLIENT_PAGE_KEY) || "null"); } catch (e) {}
+  }
   if (!st || !st.tab || !currentClient || st.cid !== currentClient.id) return;
   // v757: whether Email Marketing is allowed is only known once
   // refreshMarketingNav() hears back; it reopens the tab then.
