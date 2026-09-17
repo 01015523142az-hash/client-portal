@@ -6632,15 +6632,24 @@ async function openCreateCampaignModal(arg) {
       },
     });
     aiBtn.disabled = false;
-    if (error || !data || data.ok === false) {
+    // v771: a refused call's body is read from the error, so a "no drafts left"
+    // answer (429) can say so and lock the button.
+    const errBody = (!data && error && error.context && typeof error.context.json === 'function')
+      ? await error.context.json().catch(() => null) : null;
+    const res = data || errBody;
+    if (error || !res || res.ok === false) {
       aiMsg.style.color = 'var(--danger)';
-      aiMsg.textContent = (data && data.error) || (error && error.message) || 'Could not write the guide. Please try again.';
+      aiMsg.textContent = (res && res.error) || (error && error.message) || 'Could not write the guide. Please try again.';
+      if (res && res.draftsLeft === 0) { campAiDraftsUsed = CAMP_AI_DRAFT_MAX; campAiSyncLeft(); }
       return;
     }
     aiMsg.style.color = 'var(--success)';
     aiMsg.textContent = `Drafted ${data.criteria} criteria — read them over below.`;
     aiBtn.textContent = 'Redraft with AI';
-    campAiDraftsUsed += 1;
+    // v771: the server counts drafts per campaign, so its number wins over
+    // this page's own (which a reload used to reset).
+    campAiDraftsUsed = typeof data.draftsLeft === 'number'
+      ? CAMP_AI_DRAFT_MAX - data.draftsLeft : campAiDraftsUsed + 1;
     campAiSyncLeft();
     // v767: show the actual guide, editable, instead of just a count.
     campGuideDraft = Array.isArray(data.fields)
