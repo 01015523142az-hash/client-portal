@@ -3643,7 +3643,9 @@ async function mkDisconnect(id, domain) {
 // marketing-audiences, domain and sender actions in marketing-domains.
 // v757: templates and the inbox have functions of their own.
 const MK_AUDIENCE_ACTIONS = ["audience_list"];
-const MK_TEMPLATE_ACTIONS = ["template_get", "template_save", "logo_upload"];
+const MK_TEMPLATE_ACTIONS = ["template_get", "template_save", "logo_upload",
+  // v765: step 3 is the sending content as well as the design.
+  "content_ai", "content_save", "content_approve"];
 const MK_INBOX_ACTIONS = ["inbox_list", "messages_list", "thread_get", "message_mark", "reply"];
 async function mkCall(action, payload, fnOverride) {
   const fn = fnOverride
@@ -3904,6 +3906,102 @@ function mkRenderDesignPreview() {
 }
 
 function mkRenderTemplateStep() {
+// v765: what state the client's email content is in. Staff blocking it wins
+// over everything -- an approved email that staff have stopped must not read
+// as ready to send.
+function mkContentStatusHtml() {
+  const t = mkTemplate;
+  const box = (bg, brd, col, text) => `<div style="margin-bottom:14px; padding:10px 13px; border-radius:8px; border:1px solid ${brd}; background:${bg}; color:${col}; font-size:12.5px; line-height:1.5;">${text}</div>`;
+  if (!t || (!String(t.subject || "").trim() && !String(t.body || "").trim())) {
+    return box("var(--inset)", "var(--border-light)", "var(--text-2)",
+      "Nothing written yet. Describe what you want below and let the AI draft it.");
+  }
+  if (t.staff_blocked) {
+    return box("var(--danger-dim)", "var(--danger)", "var(--danger)",
+      "<b>On hold by your PropTech AI team.</b>" + (t.staff_note
+        ? " " + escapeHtml(t.staff_note) : " Please speak to them before sending."));
+  }
+  if (t.ai_draft) {
+    return box("var(--away-dim)", "var(--away)", "var(--away)",
+      "<b>AI draft &mdash; not approved yet.</b> Read it through, change anything you want, then approve it. Nothing sends until you do.");
+  }
+  if (t.approved_at) {
+    return box("var(--success-dim)", "var(--success)", "var(--success)",
+      "<b>Approved.</b> Campaigns we send for you start from this email. Editing it below means approving again.");
+  }
+  return box("var(--inset)", "var(--border-light)", "var(--text-2)",
+    "Not approved yet &mdash; approve it and campaigns can start from this email.");
+}
+
+function mkContentFields() {
+  const v = (id) => { const el = document.getElementById(id); return el ? el.value : ""; };
+  return {
+    subject: v("mkCSubject").trim(),
+    preheader: v("mkCPreheader").trim(),
+    body: v("mkCBody"),
+    button_text: v("mkCButtonText").trim(),
+    button_url: v("mkCButtonUrl").trim(),
+    instructions: v("mkCInstructions").trim(),
+  };
+}
+
+function wireMarketingContent() {
+  const aiBtn = document.getElementById("mkCAiBtn");
+  if (aiBtn) aiBtn.onclick = async () => {
+    const msg = document.getElementById("mkCAiMsg");
+    const instructions = (document.getElementById("mkCInstructions") || {}).value || "";
+    // Overwriting words the client already approved is not something to do quietly.
+    if (mkTemplate && mkTemplate.approved_at && !confirm(
+      "This replaces your approved email with a new AI draft, and you will need to approve it again.\n\nCarry on?")) return;
+    aiBtn.disabled = true;
+    msg.style.color = "var(--text-2)";
+    msg.textContent = "Writing\u2026 this takes a few seconds.";
+    try {
+      await mkCall("content_ai", { instructions });
+      await loadMarketingTab();
+    } catch (e) {
+      aiBtn.disabled = false;
+      const m = document.getElementById("mkCAiMsg");
+      if (m) { m.style.color = "var(--danger)"; m.textContent = e.message; }
+    }
+  };
+
+  const saveBtn = document.getElementById("mkCSaveBtn");
+  if (saveBtn) saveBtn.onclick = async () => {
+    const msg = document.getElementById("mkCMsg");
+    saveBtn.disabled = true;
+    msg.style.color = "var(--text-2)";
+    msg.textContent = "Saving\u2026";
+    try {
+      await mkCall("content_save", mkContentFields());
+      await loadMarketingTab();
+    } catch (e) {
+      saveBtn.disabled = false;
+      const m = document.getElementById("mkCMsg");
+      if (m) { m.style.color = "var(--danger)"; m.textContent = e.message; }
+    }
+  };
+
+  const okBtn = document.getElementById("mkCApproveBtn");
+  if (okBtn) okBtn.onclick = async () => {
+    const msg = document.getElementById("mkCMsg");
+    okBtn.disabled = true;
+    msg.style.color = "var(--text-2)";
+    msg.textContent = "Saving and approving\u2026";
+    try {
+      // Save first: approving what is on screen, not what was loaded, is what
+      // the client means by this button.
+      await mkCall("content_save", mkContentFields());
+      await mkCall("content_approve", {});
+      await loadMarketingTab();
+    } catch (e) {
+      okBtn.disabled = false;
+      const m = document.getElementById("mkCMsg");
+      if (m) { m.style.color = "var(--danger)"; m.textContent = e.message; }
+    }
+  };
+}
+
   const box = document.getElementById("mkTemplateBody");
   if (!box || !mkAccess) return;
   if (!mkAccess.sender_ready) {
@@ -3977,7 +4075,46 @@ function mkRenderTemplateStep() {
         <div style="font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">Preview</div>
         <div id="mkDesignPreview" style="border:1px solid var(--border); border-radius:8px; overflow:hidden;"></div>
       </div>
+    </div>
+
+    <!-- v765: the WORDS. The design above is how mail looks; this is what it
+         says. Approved content is what a campaign starts from. -->
+    <hr style="border:none; border-top:1px solid var(--border); margin:26px 0 20px;">
+    <div style="font-weight:700; font-size:13px; margin-bottom:4px;">Your email</div>
+    <div style="font-size:12.5px; color:var(--text-2); margin-bottom:14px; line-height:1.55;">
+      Tell us what to say and our AI writes it, or write it yourself. Once you approve it,
+      every campaign we send for you starts from this.
+    </div>
+    ${mkContentStatusHtml()}
+    <label for="mkCInstructions">What should the email say?</label>
+    <textarea class="modal-textarea" id="mkCInstructions" rows="3" maxlength="4000" placeholder="e.g. friendly and short, mention our 20-year warranty, ask for a free roof inspection">${escapeHtml((mkTemplate && mkTemplate.instructions) || "")}</textarea>
+    <div style="margin:10px 0 18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button class="btn-secondary" id="mkCAiBtn" style="width:auto; padding:7px 14px; font-size:12px;">Write it for me with AI</button>
+      <span id="mkCAiMsg" style="font-size:12px; color:var(--text-2);"></span>
+    </div>
+    <label for="mkCSubject">Subject line</label>
+    <input id="mkCSubject" maxlength="250" value="${escapeHtml((mkTemplate && mkTemplate.subject) || "")}">
+    <label for="mkCPreheader" style="margin-top:10px;">Preview text <span style="color:var(--text-2); font-weight:400;">(the grey line after the subject)</span></label>
+    <input id="mkCPreheader" maxlength="250" value="${escapeHtml((mkTemplate && mkTemplate.preheader) || "")}">
+    <label for="mkCBody" style="margin-top:10px;">Message</label>
+    <textarea class="modal-textarea" id="mkCBody" rows="10" maxlength="50000">${escapeHtml((mkTemplate && mkTemplate.body) || "")}</textarea>
+    <div style="font-size:11px; color:var(--text-2); margin-top:3px;"><span style="font-family:var(--mono);">{{first_name|there}}</span> becomes each contact&rsquo;s first name, or &ldquo;there&rdquo; when we do not know it.</div>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+      <div style="flex:1 1 180px; min-width:0;">
+        <label for="mkCButtonText">Button text <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
+        <input id="mkCButtonText" maxlength="80" value="${escapeHtml((mkTemplate && mkTemplate.button_text) || "")}">
+      </div>
+      <div style="flex:1 1 220px; min-width:0;">
+        <label for="mkCButtonUrl">Button link</label>
+        <input id="mkCButtonUrl" maxlength="1000" placeholder="https://" value="${escapeHtml((mkTemplate && mkTemplate.button_url) || "")}">
+      </div>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button class="btn-secondary" id="mkCSaveBtn" style="width:auto; padding:8px 16px;">Save changes</button>
+      <button class="btn-primary" id="mkCApproveBtn" style="width:auto; padding:8px 16px; margin-top:0;">Approve this email</button>
+      <span id="mkCMsg" style="font-size:12px; color:var(--text-2);"></span>
     </div>`;
+  wireMarketingContent();   // v765
 
   // oninput, not addEventListener: this box is re-rendered on every load and
   // would otherwise collect one more listener each time.
