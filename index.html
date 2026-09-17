@@ -3026,6 +3026,15 @@
      the rest of the app -- replaces the native browser confirm() that
      ticket accept/decline used to use, same overlay/box-per-use-case
      pattern as the modals above. -->
+<!-- v770: shown when a client comes back from Stripe without paying for a
+     campaign. Built by openCampaignDraftPrompt(). -->
+<div class="modal-overlay" id="campDraftPromptOverlay">
+  <div class="modal-shell">
+    <button type="button" class="modal-close-x" title="Close" onclick="closeCampaignDraftPrompt()">×</button>
+    <div class="modal-box" id="campDraftPromptBox" style="max-width:480px;"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="appConfirmModalOverlay">
   <div class="modal-shell">
     <button type="button" class="modal-close-x" title="Close" onclick="document.getElementById('appConfirmModalOverlay').click()">×</button>
@@ -4600,7 +4609,10 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 // boot
 // ---------------------------------------------------------------------------
-init();
+// v770: a tab Stripe sent back to hands its result to the portal tab that
+// opened it and does NOT boot the app (see checkoutHandoffToOpener).
+const IS_CHECKOUT_HANDOFF_TAB = checkoutHandoffToOpener();
+if (!IS_CHECKOUT_HANDOFF_TAB) init();
 
 // v104: forces the auth-card entrance animation to actually restart,
 // rather than relying on the browser to catch it on first paint (which
@@ -5442,6 +5454,12 @@ function showApp() {
     document.getElementById("tab-skiptrace").classList.remove("hidden");
   }
   restoreClientPage();   // v714: a refresh reopens the page this tab was on
+  // v770: this tab came back from Stripe by itself (no opener) without paying.
+  if (checkoutReturnNav) {
+    const nav = checkoutReturnNav;
+    checkoutReturnNav = null;
+    if (nav.draftPrompt !== undefined) openCampaignDraftPrompt(nav.draftPrompt);
+  }
   refreshMarketingNav();   // v757: show Email Marketing only to a client with a seat
 
   loadData();
@@ -6190,160 +6208,192 @@ if (document.getElementById("skiptraceSubmitOrderBtn")) document.getElementById(
   loadSkiptraceAccount();
 });
 
-// Returning from Stripe after a successful credit top-up (see
-// purchase_credits' success_url) -- clear the query string so a later page
-// reload doesn't re-trigger anything. loadSkiptraceAccount() (called from
-// showApp() on every login/session-restore above) picks up the new balance
-// once the Stripe webhook has credited it, which is normally faster than
-// this round trip back from Stripe completes.
-if (new URLSearchParams(window.location.search).get("skiptrace_topup") === "success") {
-  window.history.replaceState({}, "", window.location.pathname);
-}
-
-// v281: returning from a campaign subscription checkout -- same "clear
-// the query string, let the webhook do the real work" pattern as the
-// skiptrace top-up handler just above. handleStripeWebhook's
-// campaign_subscription branch (public-skiptrace/index.ts) is what
-// actually creates the campaign; this only clears the URL and refreshes
-// what's on screen, which may briefly still show the campaign as not-yet-
-// created if the webhook hasn't finished by the time this runs -- a
-// later loadData()/loadMyCampaignSubscriptions() call (next tab switch,
-// next login) will pick it up.
 // ---------------------------------------------------------------------------
-// v768: coming back from Stripe Checkout.
+// v770: coming back from Stripe Checkout.
 //
-// Checkout is opened in a NEW TAB (openStripeCheckoutTab), and Stripe sends the
-// success/cancel URL to THAT tab. The portal then booted fresh there and showed
-// a login screen -- which is what you hit by pressing Back on Stripe. The
-// message on the original tab has always said "you'll land back here once it's
-// done", so the intent was always the opener; only the plumbing was missing.
+// Checkout opens in a NEW TAB (openStripeCheckoutTab), and Stripe sends its
+// success/cancel URL to THAT tab. v768 had that tab tell the opener, and the
+// opener then RELOADED itself with the result in its address -- the owner's
+// report: pressing Back on Stripe said "Done" and landed on the login page.
+// Two things were wrong: "Done" was shown for a payment that never happened,
+// and a reload is exactly the step that can drop someone on the sign-in form
+// (both tabs restoring the same session at the same moment).
 //
-// Rather than make the payment tab sign itself in, it hands the result to the
-// tab that started it -- still open, still signed in -- and closes. The opener
-// then reloads with the same query string, so every existing handler below runs
-// exactly as it always did, with no special case per payment type.
-const PAYMENT_RESULT_PARAMS = ["campaign_payment", "one_off_charge", "list_order_payment"];
-const PAYMENT_HANDOFF = "ptai_payment_result";
-
-(function handOffCheckoutResultToOpener() {
+// Now:
+//  - the payment tab hands the result over BEFORE the app boots (the boot line
+//    skips init() for it), says what actually happened, and closes;
+//  - the working tab handles the result IN PLACE -- no reload, no navigation;
+//  - a cancelled campaign checkout is not "cancelled": the request is kept as a
+//    Draft (client_campaign_payment_requests, status 'pending'), shown in
+//    Billing -> Subscriptions with "Continue to payment", and the client is
+//    taken there.
+// With no opener (a blocked popup, or Stripe's page cut the link) the tab
+// boots normally and handles the result itself, as before.
+// ---------------------------------------------------------------------------
+function checkoutResultParams() {
+  return ["campaign_payment", "one_off_charge", "list_order_payment", "payment_method", "skiptrace_topup"];
+}
+// A function declaration so the boot line above can call it before this point.
+function checkoutHandoffToOpener() {
   const qs = new URLSearchParams(window.location.search);
-  if (!PAYMENT_RESULT_PARAMS.some((k) => qs.get(k))) return;
-  // No opener means this IS the tab the person is working in (a blocked popup,
-  // or they navigated here themselves) -- handle it here as before.
+  const params = checkoutResultParams();
+  if (!params.some((k) => qs.get(k))) return false;
   let opener = null;
   try { opener = window.opener && !window.opener.closed ? window.opener : null; } catch (e) {}
-  if (!opener) return;
+  if (!opener) return false;
   try {
-    opener.postMessage({ type: PAYMENT_HANDOFF, search: window.location.search }, window.location.origin);
+    opener.postMessage({ type: "ptai_payment_result", search: window.location.search }, window.location.origin);
   } catch (e) {
-    return;   // could not reach it; fall through and handle it here instead
+    return false;   // could not reach it; this tab handles the result itself
   }
-  // Say something first: window.close() is refused in some browsers for a tab
-  // the user has interacted with, and a silently blank tab looks broken.
-  try {
-    document.documentElement.innerHTML =
-      '<body style="margin:0;display:flex;align-items:center;justify-content:center;'
-      + 'height:100vh;font:15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;'
-      + 'background:#0f1115;color:#e8e6e3;text-align:center;padding:24px;">'
-      + '<div>Done — back in your portal tab.<br>'
-      + '<span style="color:#9aa0a6;font-size:13px;">You can close this one.</span></div></body>';
-  } catch (e) {}
-  setTimeout(() => { try { window.close(); } catch (e) {} }, 400);
-})();
+  const paid = params.some((k) => qs.get(k) === "success");
+  const campaignDraft = qs.get("campaign_payment") === "cancelled";
+  const headline = paid ? "Payment complete" : "Payment not completed";
+  const detail = paid
+    ? "Your portal tab has been updated."
+    : campaignDraft
+      ? "Nothing was charged. Your campaign is saved as a draft &mdash; continue it any time from Billing &rarr; Subscriptions in your portal tab."
+      : "Nothing was charged. You can finish it any time from your portal tab.";
+  const showCard = () => {
+    const card = document.createElement("div");
+    card.setAttribute("style", "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;"
+      + "justify-content:center;padding:24px;background:#0f1115;color:#e8e6e3;text-align:center;"
+      + "font:15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;");
+    card.innerHTML = `<div style="max-width:420px;">
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px;">${headline}</div>
+        <div style="color:#b9bec4;line-height:1.55;">${detail}</div>
+        <div style="color:#9aa0a6;font-size:13px;margin-top:14px;">You can close this tab.</div>
+        <button type="button" style="margin-top:14px;padding:8px 18px;border-radius:999px;border:1px solid #444;
+          background:#1c1f26;color:#e8e6e3;font:inherit;cursor:pointer;">Close this tab</button>
+      </div>`;
+    card.querySelector("button").onclick = () => { try { window.close(); } catch (e) {} };
+    document.body.appendChild(card);
+  };
+  if (document.body) showCard(); else document.addEventListener("DOMContentLoaded", showCard);
+  try { opener.focus(); } catch (e) {}
+  setTimeout(() => { try { window.close(); } catch (e) {} }, 1500);
+  return true;
+}
 
-// The working tab picks the result up and reloads with it, which is what makes
-// the handlers below fire in a tab that is actually signed in.
+// What a result wants to show, when it arrives before sign-in has finished (a
+// tab that booted itself). showApp() consumes it.
+var checkoutReturnNav = null;
+
+function handleCheckoutReturn(search) {
+  const qs = new URLSearchParams(search || "");
+  if (!checkoutResultParams().some((k) => qs.get(k))) return;
+  // Clear the query string so a later refresh doesn't re-trigger anything.
+  if (window.location.search) window.history.replaceState({}, "", window.location.pathname);
+  const refreshSubs = () => { if (typeof loadMyCampaignSubscriptions === "function" && currentClient) loadMyCampaignSubscriptions(); };
+
+  // Credit top-up: loadSkiptraceAccount() picks up the new balance once the
+  // Stripe webhook has credited it.
+  if (qs.get("skiptrace_topup") === "success") {
+    if (currentClient && typeof loadSkiptraceAccount === "function") loadSkiptraceAccount();
+  }
+
+  // v281: handleStripeWebhook's campaign_subscription branch
+  // (public-skiptrace/index.ts) creates the campaign; this only refreshes
+  // what's on screen, which may briefly lag the webhook.
+  if (qs.get("campaign_payment") === "success") {
+    if (typeof closeCreateCampaignModal === "function") closeCreateCampaignModal();
+    addNotifCenterItem({
+      icon: "\u{1F4E3}",
+      title: "Payment received",
+      body: `Your campaign subscription is being set up — it'll appear on your Dashboard and under Seller Opportunities → Campaign Guide shortly, and under Billing once the subscription is active. Your caller will start ${campNextBusinessDayLabel()}; we've extended your first billing cycle by that same gap.`,
+      onClick: () => { loadData(); refreshSubs(); refreshAccountTypeAfterUpgrade(); },
+    });
+    if (currentClient) { loadData(); refreshAccountTypeAfterUpgrade(); refreshSubs(); }
+    // The webhook usually lands a few seconds after the redirect.
+    setTimeout(() => { if (currentClient) { loadData(); refreshSubs(); } }, 6000);
+  }
+  if (qs.get("campaign_payment") === "cancelled") {
+    if (typeof closeCreateCampaignModal === "function") closeCreateCampaignModal();
+    // Which draft: the cancel URL names it (client-create-campaign), else the
+    // one this browser last sent to checkout (resume from Billing).
+    const draftId = qs.get("draft") || campLastCheckoutDraftId();
+    addNotifCenterItem({
+      icon: "\u{1F4DD}",
+      title: "Campaign saved as a draft",
+      body: "Payment wasn't completed, so nothing was charged. Your campaign details and guide are saved — complete payment or amend it from Billing → Subscriptions whenever you're ready.",
+      onClick: () => openCampaignDraftPrompt(draftId),
+    });
+    // v770 (owner): a pop-up the moment they are back -- complete the payment,
+    // or amend the campaign -- rather than a quiet bell item.
+    if (currentClient) openCampaignDraftPrompt(draftId);
+    else checkoutReturnNav = { draftPrompt: draftId || "" };
+  }
+
+  // v286: one-off charge checkout (pay_one_off_charge).
+  if (qs.get("one_off_charge") === "success") {
+    addNotifCenterItem({
+      icon: "\u{1F4E3}",
+      title: "Payment received",
+      body: "Thanks — your payment has been received.",
+      onClick: () => refreshSubs(),
+    });
+    refreshSubs();
+  }
+  if (qs.get("one_off_charge") === "cancelled") {
+    addNotifCenterItem({
+      icon: "\u{26A0}\u{FE0F}",
+      title: "Payment cancelled",
+      body: "You weren't charged. You can pay it anytime from the Billing tab.",
+      onClick: () => { if (typeof navigateToClientTab === "function") navigateToClientTab("billing"); },
+    });
+  }
+
+  // v289: Buy a List checkout (client-list-orders' create_order).
+  if (qs.get("list_order_payment") === "success") {
+    addNotifCenterItem({
+      icon: "\u{1F4CB}",
+      title: "Payment received",
+      body: "Thanks — our data team will start pulling your list. You'll be able to download it right here once it's ready.",
+      onClick: () => { if (typeof loadListOrders === "function") loadListOrders(); },
+    });
+    if (currentClient && typeof loadListOrders === "function") loadListOrders();
+  }
+  if (qs.get("list_order_payment") === "cancelled") {
+    addNotifCenterItem({
+      icon: "\u{26A0}\u{FE0F}",
+      title: "Payment cancelled",
+      body: "You weren't charged and no list request was started. You can submit a new request anytime from Buy a list.",
+      onClick: () => { const buylistNavBtn = document.getElementById("buylistNavBtn"); if (buylistNavBtn) buylistNavBtn.click(); },
+    });
+  }
+
+  // v297: "Add / update payment method" (mode: 'setup', no charge).
+  if (qs.get("payment_method") === "success") {
+    addNotifCenterItem({
+      icon: "\u{1F4B3}",
+      title: "Payment method saved",
+      body: "Your new card is saved and set as your default payment method.",
+      onClick: () => { const billingNavBtn = document.getElementById("billingNavBtn"); if (billingNavBtn) billingNavBtn.click(); },
+    });
+    if (currentClient && typeof loadBillingPaymentMethods === "function") loadBillingPaymentMethods();
+  }
+}
+
+// The working tab: take the result in place. No reload.
+let checkoutReturnLastSearch = "";
 window.addEventListener("message", (ev) => {
   if (ev.origin !== window.location.origin) return;                 // same-origin only
-  if (!ev.data || ev.data.type !== PAYMENT_HANDOFF) return;
+  if (!ev.data || ev.data.type !== "ptai_payment_result") return;
   const search = String(ev.data.search || "");
-  if (!search) return;
-  const qs = new URLSearchParams(search);
-  if (!PAYMENT_RESULT_PARAMS.some((k) => qs.get(k))) return;        // nothing we act on
+  if (!search || search === checkoutReturnLastSearch) return;       // one hand-off, handled once
+  checkoutReturnLastSearch = search;
   try { window.focus(); } catch (e) {}
-  window.location.search = search;
+  handleCheckoutReturn(search);
 });
 
-if (new URLSearchParams(window.location.search).get("campaign_payment") === "success") {
-  window.history.replaceState({}, "", window.location.pathname);
-  addNotifCenterItem({
-    icon: "\u{1F4E3}",
-    title: "Payment received",
-    body: `Your campaign subscription is being set up — it'll appear on your Dashboard and under Seller Opportunities → Campaign Guide shortly, and under Billing once the subscription is active. Your caller will start ${campNextBusinessDayLabel()}; we've extended your first billing cycle by that same gap.`,
-    onClick: () => { loadData(); if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions(); refreshAccountTypeAfterUpgrade(); },
-  });
-  loadData();
-  refreshAccountTypeAfterUpgrade();
-}
-if (new URLSearchParams(window.location.search).get("campaign_payment") === "cancelled") {
-  window.history.replaceState({}, "", window.location.pathname);
-  addNotifCenterItem({
-    icon: "\u{26A0}\u{FE0F}",
-    title: "Payment cancelled",
-    body: "You weren't charged and no campaign was created. You can try again anytime from Dashboard → + Create Campaign.",
-    onClick: () => { if (typeof openCreateCampaignModal === "function") openCreateCampaignModal(); },
-  });
-}
-
-// v286: returning from a one-off charge checkout (pay_one_off_charge) --
-// same pattern as campaign_payment above.
-if (new URLSearchParams(window.location.search).get("one_off_charge") === "success") {
-  window.history.replaceState({}, "", window.location.pathname);
-  addNotifCenterItem({
-    icon: "\u{1F4E3}",
-    title: "Payment received",
-    body: "Thanks — your payment has been received.",
-    onClick: () => { if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions(); },
-  });
-  if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions();
-}
-if (new URLSearchParams(window.location.search).get("one_off_charge") === "cancelled") {
-  window.history.replaceState({}, "", window.location.pathname);
-  addNotifCenterItem({
-    icon: "\u{26A0}\u{FE0F}",
-    title: "Payment cancelled",
-    body: "You weren't charged. You can pay it anytime from the Billing tab.",
-    onClick: () => { if (typeof navigateToClientTab === "function") navigateToClientTab("billing"); },
-  });
-}
-
-// v289: returning from a Buy a List checkout (client-list-orders'
-// create_order) -- same pattern as campaign_payment/one_off_charge above.
-if (new URLSearchParams(window.location.search).get("list_order_payment") === "success") {
-  window.history.replaceState({}, "", window.location.pathname);
-  addNotifCenterItem({
-    icon: "\u{1F4CB}",
-    title: "Payment received",
-    body: "Thanks — our data team will start pulling your list. You'll be able to download it right here once it's ready.",
-    onClick: () => { if (typeof loadListOrders === "function") loadListOrders(); },
-  });
-  if (typeof loadListOrders === "function") loadListOrders();
-}
-if (new URLSearchParams(window.location.search).get("list_order_payment") === "cancelled") {
-  window.history.replaceState({}, "", window.location.pathname);
-  addNotifCenterItem({
-    icon: "\u{26A0}\u{FE0F}",
-    title: "Payment cancelled",
-    body: "You weren't charged and no list request was started. You can submit a new request anytime from Buy a list.",
-    onClick: () => { const buylistNavBtn = document.getElementById("buylistNavBtn"); if (buylistNavBtn) buylistNavBtn.click(); },
-  });
-}
-
-// v297: returning from "Add / update payment method" (a Stripe Checkout
-// Session in mode: 'setup', no charge) -- same pattern as every other
-// return-from-Stripe handler above.
-if (new URLSearchParams(window.location.search).get("payment_method") === "success") {
-  window.history.replaceState({}, "", window.location.pathname);
-  addNotifCenterItem({
-    icon: "\u{1F4B3}",
-    title: "Payment method saved",
-    body: "Your new card is saved and set as your default payment method.",
-    onClick: () => { const billingNavBtn = document.getElementById("billingNavBtn"); if (billingNavBtn) billingNavBtn.click(); },
-  });
-  if (typeof loadBillingPaymentMethods === "function") loadBillingPaymentMethods();
-}
-if (new URLSearchParams(window.location.search).get("payment_method") === "cancelled") {
-  window.history.replaceState({}, "", window.location.pathname);
+// A tab that booted itself with a result in its address (no opener).
+// Deferred until this whole script has run: calling addNotifCenterItem() here,
+// mid-script, touched `notifCenterItems` before its `let` line and threw --
+// which aborted everything after this point on the page, the reason a page
+// loaded with ?campaign_payment=... came up broken instead of signed in.
+if (!IS_CHECKOUT_HANDOFF_TAB) {
+  const bootSearch = window.location.search;
+  setTimeout(() => handleCheckoutReturn(bootSearch), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -6358,7 +6408,16 @@ if (new URLSearchParams(window.location.search).get("payment_method") === "cance
 // refreshCampPricing() before building the modal's HTML below, so the
 // tier/dialer labels always reflect the current server-side pricing
 // instead of whatever was hardcoded (or last fetched) before this open.
-async function openCreateCampaignModal() {
+// v770: opened with { draft, guideFields } by "Amend my campaign" -- the same
+// form, filled in from the saved draft. Anything else (a click event from the
+// plain "+ Create Campaign" buttons) opens it empty.
+let campAmendDraftId = null;
+let campDraftScript = null;   // { path, name } of a script already saved on the draft
+async function openCreateCampaignModal(arg) {
+  const amend = arg && arg.draft && arg.draft.id ? arg : null;
+  campAmendDraftId = amend ? amend.draft.id : null;
+  campDraftScript = null;
+  campGuideDraft = null;
   await refreshCampPricing();
   const box = document.getElementById("campaignModalBox");
   box.innerHTML = `
@@ -6428,8 +6487,8 @@ async function openCreateCampaignModal() {
         <div style="font-weight:700; font-size:12px; margin-bottom:4px;">Campaign guide</div>
         <div style="font-size:11px; color:var(--text-2); line-height:1.55; margin-bottom:8px;">
           Fill in the three answers above, then let our AI draft the qualification criteria your
-          caller will work from. Your account manager reviews it before anyone starts calling,
-          and you can change anything with them.
+          caller will work from. Once your campaign is paid, your account manager reviews it
+          before anyone starts calling, and you can change anything with them.
         </div>
         <button type="button" class="btn-secondary" id="campAiDraftBtn" style="width:auto; padding:7px 14px; font-size:12px;">Draft my campaign guide with AI</button>
         <span id="campAiDraftLeft" style="font-size:11px; color:var(--text-2); margin-left:8px;">You can draft this twice.</span>
@@ -6596,8 +6655,73 @@ async function openCreateCampaignModal() {
   // now pre-checked above (matching what those spans always assumed), and
   // this renders the total for that real default immediately instead of
   // waiting for a change event.
+  if (amend) {
+    campPrefillFromDraft(amend.draft);
+    const title = box.querySelector(".modal-title");
+    const sub = box.querySelector(".modal-sub");
+    if (title) title.textContent = "Amend your campaign";
+    if (sub) sub.textContent = "Nothing has been charged yet. Change anything you like, then continue to payment — your saved draft is updated, not duplicated.";
+    if (Array.isArray(amend.guideFields) && amend.guideFields.length) {
+      campGuideDraft = amend.guideFields.map((f) => ({ label: f.label || "", value: f.value || "" }));
+      campRenderGuideDraft();
+      const redraft = document.getElementById("campAiDraftBtn");
+      if (redraft) redraft.textContent = "Redraft with AI";
+    }
+  }
   updateCampPriceTotal();
   document.getElementById("campaignModalOverlay").classList.add("show");
+}
+
+// v770: fill the Create Campaign form from a saved draft. The keys are the
+// ones client-create-campaign writes into client_campaign_payment_requests.qa;
+// multi-select answers were joined with ", " and no option contains one.
+function campPrefillFromDraft(d) {
+  const qa = d.qa || {};
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+  const setRadio = (name, v) => {
+    if (!v) return;
+    document.querySelectorAll(`input[name="${name}"]`).forEach((r) => { r.checked = r.value === v; });
+  };
+  const setChecks = (containerId, v) => {
+    if (!v) return;
+    const want = new Set(String(v).split(", "));
+    document.querySelectorAll(`#${containerId} input[type="checkbox"]`).forEach((cb) => { cb.checked = want.has(cb.value); });
+  };
+  setVal("campCampaignName", d.campaign_name);
+  setRadio("campCallerTier", d.caller_tier);
+  setRadio("campDialerChoice", d.dialer_choice);
+  setRadio("campDataChoice", d.data_choice);
+  setRadio("campKind", qa["Campaign Type (Criteria)"] === "Other industry" ? "other" : "real_estate");
+  applyCampKind();
+  setVal("campIndustry", qa["Industry (Criteria)"]);
+  setVal("campDataCriteria", qa["Data Criteria (data pulling & Criteria)"]);
+  setVal("campMarketCoverage", qa["Market Coverage (data pulling & Criteria)"]);
+  setChecks("campTypeOfLeadsGroup", qa["Type of Leads (data pulling)"]);
+  setChecks("campPropertyTypeGroup", qa["Property Type (data pulling)"]);
+  setVal("campTargetMarket", qa["Target Market (data pulling & Criteria)"]);
+  setRadio("campValidReason", qa["Do you want the seller to always have a valid reason for selling or you can accept leads when the seller says that he can sell the property for the right offer ? (Criteria)"]);
+  setChecks("campAcceptListedGroup", qa["Do you accept listed properties? (Criteria)"]);
+  setRadio("campCoverCommission", qa["Do you cover Realtor Commission/Fees? (Criteria)"]);
+  setRadio("campCoverClosing", qa["Do you cover closing fees ? (Criteria)"]);
+  setRadio("campAskAskingPrice", qa['Do you need your Cold Caller to ask if the homeowner has an "Asking Price"? (Criteria)']);
+  setRadio("campAboveBelowMarket", qa["Do you buy Above or Below Market price or do you accept any motivated seller even if it is Above Market Value? (Criteria)"]);
+  setChecks("campMarketValueSourceGroup", qa["Market value Source (Criteria)"]);
+  setVal("campPriceRestrictions", qa["Do you have any property price restrictions? For example, do you only work with properties above or below a specific price range? If so, could you please provide more details? (Criteria)"]);
+  setRadio("campMaxClosing", qa["What is the maximum closing timeline acceptable? (Criteria)"]);
+  setRadio("campOutsideReferrals", qa["Do you accept referrals outside of your targeted market? (Criteria)"]);
+  setRadio("campAskSellerEmail", qa["Would you like us to ask about the email address of the seller ? (Criteria)"]);
+  setVal("campOtherDetails", qa["Any other details to help us understand your order?"]);
+  // A file input cannot be refilled; the saved script is kept unless a new one is picked.
+  if (qa["Caller Script (attachment)"]) {
+    campDraftScript = { path: qa["Caller Script (attachment)"], name: qa["Caller Script Filename"] || "caller script" };
+    const input = document.getElementById("campCallerScript");
+    if (input) {
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:11px; color:var(--text-2); margin-top:4px;";
+      note.textContent = `On file: ${campDraftScript.name}. Choose a new file only if you want to replace it.`;
+      input.insertAdjacentElement("afterend", note);
+    }
+  }
 }
 
 // v282: data volume scales with caller tier -- a part-time caller can't
@@ -6756,7 +6880,8 @@ let campScriptUpload = null;   // { file, path, name }
 async function campEnsureScriptUploaded() {
   const input = document.getElementById("campCallerScript");
   const file = input && input.files && input.files[0];
-  if (!file) return { path: null, name: null };
+  // v770: amending a draft keeps the script it was saved with.
+  if (!file) return campDraftScript ? { path: campDraftScript.path, name: campDraftScript.name } : { path: null, name: null };
   if (campScriptUpload && campScriptUpload.file === file) {
     return { path: campScriptUpload.path, name: campScriptUpload.name };
   }
@@ -6914,6 +7039,8 @@ async function submitCreateCampaign() {
     return;
   }
   if (up.path) { body.callerScriptPath = up.path; body.callerScriptName = up.name; }
+  // v770: amending a saved draft updates it rather than starting another.
+  if (campAmendDraftId) body.draftRequestId = campAmendDraftId;
 
   const { data, error } = await sb.functions.invoke("client-create-campaign", { body });
 
@@ -6955,6 +7082,10 @@ async function submitCreateCampaign() {
 
   goToCheckoutTab(checkoutTab, data.checkoutUrl, msg);
   btn.textContent = "Redirected — check the new tab";
+  // v770: from here it is a saved draft -- Billing shows it straight away, so
+  // a checkout tab that is simply closed still leaves a way back.
+  if (data.pendingRequestId) { campRememberCheckoutDraft(data.pendingRequestId); campAmendDraftId = data.pendingRequestId; }
+  if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions();
 }
 
 // ---------------------------------------------------------------------------
@@ -7088,6 +7219,36 @@ document.getElementById("oneOffChargesList").addEventListener("click", async (e)
 // they don't exist anywhere else yet (no Dashboard/Campaign Guide entry,
 // no client_campaign_subscriptions row), so without this panel an
 // abandoned/expired checkout would look like it just vanished.
+// v770 (owner): these are DRAFTS. They also show at the top of Billing ->
+// Subscriptions, and every place offers the same two ways forward: complete
+// the payment with what was saved, or amend the campaign in the form it was
+// written in. Nothing has to be filled in again.
+function campaignDraftAddOns(p) {
+  return [p.dialer_choice === "ours" ? "Our dialer" : "Own dialer", p.data_choice === "ours" ? "Our data" : "Own data"].join(" · ");
+}
+function campaignDraftCardHtml(p, where) {
+  const saved = p.created_at ? new Date(p.created_at).toLocaleDateString() : "";
+  return `
+      <div class="card" style="margin-bottom:10px; border-color:var(--warning, #d9a02c);" data-pending-id="${p.id}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:700; font-size:13px;">${escapeHtml(p.campaign_name)}</div>
+            <div style="font-size:11px; color:var(--text-2); margin-top:2px;">${escapeHtml(CAMPAIGN_TIER_LABEL[p.caller_tier] || p.caller_tier)} · ${escapeHtml(campaignDraftAddOns(p))}</div>
+          </div>
+          <div style="text-align:right; font-size:11px; color:var(--text-2);">
+            <div style="font-weight:700; color:var(--warning, #d9a02c);">Draft</div>
+            ${saved ? `<div>Saved ${escapeHtml(saved)}</div>` : ""}
+          </div>
+        </div>
+        <div style="font-size:11px; color:var(--text-2); margin-top:8px;">Payment wasn't completed, so this campaign hasn't started and nothing has been charged. Your answers${where === "subs" ? " and campaign guide" : ""} are saved — pick up where you left off.</div>
+        <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+          <button class="btn-primary campaign-pending-pay-btn" data-id="${p.id}" style="width:auto; padding:6px 14px; font-size:11px;">Complete payment</button>
+          <button class="btn-outline campaign-draft-amend-btn" data-id="${p.id}" style="width:auto; padding:6px 14px; font-size:11px;">Amend my campaign</button>
+        </div>
+        <div class="msg hidden" data-campaign-pending-msg="${p.id}" style="margin-top:10px;"></div>
+      </div>`;
+}
+
 function renderCampaignPendingPayments() {
   const panelEl = document.getElementById("campaignPendingPaymentsPanel");
   const listEl = document.getElementById("campaignPendingPaymentsList");
@@ -7098,53 +7259,115 @@ function renderCampaignPendingPayments() {
     return;
   }
   panelEl.classList.remove("hidden");
-  listEl.innerHTML = campaignPendingPaymentsCache.map((p) => {
-    const addOns = [p.dialer_choice === "ours" ? "Our dialer" : "Own dialer", p.data_choice === "ours" ? "Our data" : "Own data"].join(" · ");
-    return `
-      <div class="card" style="margin-bottom:10px; border-color:var(--warning, #d9a02c);" data-pending-id="${p.id}">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
-          <div>
-            <div style="font-weight:700; font-size:13px;">${escapeHtml(p.campaign_name)}</div>
-            <div style="font-size:11px; color:var(--text-2); margin-top:2px;">${escapeHtml(CAMPAIGN_TIER_LABEL[p.caller_tier] || p.caller_tier)} · ${escapeHtml(addOns)}</div>
-          </div>
-          <div style="text-align:right; font-size:11px; color:var(--warning, #d9a02c); font-weight:700;">Payment pending</div>
-        </div>
-        <div style="font-size:11px; color:var(--text-2); margin-top:8px;">This campaign won't go live until payment is completed — it isn't on your Dashboard yet.</div>
-        <div style="margin-top:10px;">
-          <button class="btn-primary campaign-pending-pay-btn" data-id="${p.id}" style="width:auto; padding:6px 14px; font-size:11px;">Complete payment</button>
-        </div>
-        <div class="msg hidden" data-campaign-pending-msg="${p.id}" style="margin-top:10px;"></div>
-      </div>`;
-  }).join("");
+  listEl.innerHTML = campaignPendingPaymentsCache.map((p) => campaignDraftCardHtml(p, "pending")).join("");
 }
 
-document.getElementById("campaignPendingPaymentsList").addEventListener("click", async (e) => {
-  const btn = e.target.closest(".campaign-pending-pay-btn");
-  if (!btn) return;
-  const msgEl = document.querySelector(`[data-campaign-pending-msg="${btn.dataset.id}"]`);
+// The browser remembers which draft it last sent to Stripe, so a return from a
+// resumed checkout (whose cancel URL does not name the draft) still knows which
+// one to offer. Per client, in case two accounts share this browser.
+const CAMP_LAST_DRAFT_KEY = "pt.lastCampaignDraft";
+function campRememberCheckoutDraft(id) {
+  if (!id || !currentClient) return;
+  try { localStorage.setItem(CAMP_LAST_DRAFT_KEY, JSON.stringify({ cid: currentClient.id, id })); } catch (e) {}
+}
+function campLastCheckoutDraftId() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CAMP_LAST_DRAFT_KEY) || "null");
+    return v && currentClient && v.cid === currentClient.id ? v.id : null;
+  } catch (e) { return null; }
+}
+
+async function resumeCampaignDraftPayment(btn, draftId, msgEl) {
   btn.disabled = true;
   btn.textContent = "Redirecting…";
   if (msgEl) msgEl.classList.add("hidden");
-  const checkoutTab = openStripeCheckoutTab();
+  const checkoutTab = openStripeCheckoutTab();   // before any await -- popup blockers
   const { data, error } = await sb.functions.invoke("client-manage-subscription", {
-    body: { action: "resume_campaign_payment", pendingRequestId: btn.dataset.id, returnUrl: window.location.href.split("?")[0] },
+    body: { action: "resume_campaign_payment", pendingRequestId: draftId, returnUrl: window.location.href.split("?")[0] },
   });
   if (error || !data || data.ok === false || !data.checkoutUrl) {
     if (checkoutTab && !checkoutTab.closed) checkoutTab.close();
     alert(await skiptraceInvokeErrorMessage(error, data));
     btn.disabled = false;
     btn.textContent = "Complete payment";
-    return;
+    return false;
   }
+  campRememberCheckoutDraft(draftId);
   // audit fix (portal_audit_chunk2.md #4, Medium): left disabled on
   // success instead of unconditionally re-enabling before the new tab has
   // navigated — see submitListOrderBtn above for the full rationale.
-  // BUG FIX: was previously left disabled forever and passed null instead
-  // of msgEl -- see armCheckoutRedirectButton's comment.
   goToCheckoutTab(checkoutTab, data.checkoutUrl, msgEl);
   btn.textContent = "Redirected — check the new tab";
   armCheckoutRedirectButton(btn, "Complete payment");
+  return true;
+}
+
+async function openCampaignDraftForAmend(draftId, btn) {
+  const original = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Opening…"; }
+  const { data, error } = await sb.functions.invoke("client-create-campaign", {
+    body: { action: "get_draft", draftRequestId: draftId },
+  });
+  if (btn) { btn.disabled = false; btn.textContent = original; }
+  if (error || !data || data.ok === false || !data.draft) {
+    alert(await skiptraceInvokeErrorMessage(error, data));
+    if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions();
+    return;
+  }
+  openCreateCampaignModal({ draft: data.draft, guideFields: data.guideFields || null });
+}
+
+// Both lists use the same card; each click is scoped to ITS card, because the
+// same draft renders in Subscriptions and in Pending payment at once.
+function campaignDraftListClick(e) {
+  const pay = e.target.closest(".campaign-pending-pay-btn");
+  const amend = e.target.closest(".campaign-draft-amend-btn");
+  const btn = pay || amend;
+  if (!btn) return;
+  const msgEl = btn.closest(".card")?.querySelector("[data-campaign-pending-msg]");
+  if (pay) resumeCampaignDraftPayment(pay, pay.dataset.id, msgEl);
+  else openCampaignDraftForAmend(amend.dataset.id, amend);
+}
+document.getElementById("campaignPendingPaymentsList").addEventListener("click", campaignDraftListClick);
+document.getElementById("campaignSubscriptionsList").addEventListener("click", campaignDraftListClick);
+
+// v770 (owner): the pop-up a client sees the moment they come back from Stripe
+// without paying -- complete the payment, or amend the campaign.
+function closeCampaignDraftPrompt() {
+  document.getElementById("campDraftPromptOverlay").classList.remove("show");
+  document.getElementById("campDraftPromptBox").innerHTML = "";
+}
+document.getElementById("campDraftPromptOverlay").addEventListener("click", (e) => {
+  if (e.target.id === "campDraftPromptOverlay") closeCampaignDraftPrompt();
 });
+async function openCampaignDraftPrompt(draftId) {
+  if (!currentClient) return;
+  await loadMyCampaignSubscriptions();
+  navigateToClientTab("billing", "subscriptions");   // the draft card sits behind the pop-up
+  const drafts = campaignPendingPaymentsCache || [];
+  const draft = (draftId && drafts.find((p) => p.id === draftId)) || drafts[0];
+  if (!draft) return;   // paid in the meantime, or nothing saved -- nothing to offer
+  const box = document.getElementById("campDraftPromptBox");
+  box.innerHTML = `
+    <div class="modal-title">You didn't complete the payment</div>
+    <div class="modal-sub">Nothing has been charged. <b>${escapeHtml(draft.campaign_name)}</b> is saved as a draft in Billing → Subscriptions, so you don't have to fill anything in again.</div>
+    <div style="font-size:12px; color:var(--text-2); margin:-4px 0 4px;">${escapeHtml(CAMPAIGN_TIER_LABEL[draft.caller_tier] || draft.caller_tier)} · ${escapeHtml(campaignDraftAddOns(draft))}</div>
+    <div class="msg hidden" id="campDraftPromptMsg"></div>
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button class="btn-ghost" id="campDraftPromptLater" style="border:1px solid var(--border-light); border-radius:10px;">Later</button>
+      <button class="btn-outline" id="campDraftPromptAmend" style="width:auto;">Amend my campaign</button>
+      <button class="btn-primary" id="campDraftPromptPay" style="width:auto;">Click here to complete payment</button>
+    </div>`;
+  document.getElementById("campDraftPromptLater").onclick = closeCampaignDraftPrompt;
+  document.getElementById("campDraftPromptAmend").onclick = async (e) => {
+    await openCampaignDraftForAmend(draft.id, e.currentTarget);
+    closeCampaignDraftPrompt();
+  };
+  document.getElementById("campDraftPromptPay").onclick = (e) => {
+    resumeCampaignDraftPayment(e.currentTarget, draft.id, document.getElementById("campDraftPromptMsg"));
+  };
+  document.getElementById("campDraftPromptOverlay").classList.add("show");
+}
 
 // ---------------------------------------------------------------------------
 // v297: Billing > Transaction History -- every completed Stripe charge
@@ -7538,13 +7761,15 @@ function renderCreditBalanceBanner() {
 function renderCampaignSubscriptions() {
   const listEl = document.getElementById("campaignSubscriptionsList");
   const emptyEl = document.getElementById("campaignSubscriptionsEmpty");
+  // v770: unpaid campaigns are listed here as Drafts, above the real ones.
+  const draftsHtml = (campaignPendingPaymentsCache || []).map((p) => campaignDraftCardHtml(p, "subs")).join("");
   if (!campaignSubscriptionsCache.length) {
-    listEl.innerHTML = "";
-    emptyEl.classList.remove("hidden");
+    listEl.innerHTML = draftsHtml;
+    emptyEl.classList.toggle("hidden", !!draftsHtml);
     return;
   }
   emptyEl.classList.add("hidden");
-  listEl.innerHTML = campaignSubscriptionsCache.map((s) => {
+  listEl.innerHTML = draftsHtml + campaignSubscriptionsCache.map((s) => {
     const pending = campaignSubPendingActionsCache.find((a) => a.subscription_id === s.id);
     const periodEnd = s.current_period_end ? new Date(s.current_period_end).toLocaleDateString() : "—";
     // v395: an unpaid proration charge from a failed add/remove/convert
