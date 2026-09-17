@@ -6430,6 +6430,7 @@ async function openCreateCampaignModal() {
     <label>Upload a caller script (optional)</label>
     <input type="file" id="campCallerScript" accept=".pdf,.doc,.docx,.txt,.rtf,.odt">
     <div style="font-size:11px; color:var(--text-2); margin-top:2px;">Already have a script you want the caller to use? Upload it and it will be attached to your campaign guide. PDF, Word, RTF or text, up to 10&nbsp;MB. You can skip this and send it later.</div>
+    <div style="font-size:11px; color:var(--text-2); margin-top:4px; line-height:1.5;">Our AI reads your script on <b>Gemini 3.6 or newer</b> to write your campaign guide, so the clearer the script the better the guide. <b>PDF or plain text is read in full</b> &mdash; a Word file is attached for your account manager but cannot be read automatically.</div>
 
     <div class="msg" id="campaignModalMsg"></div>
     <div class="modal-actions">
@@ -6523,10 +6524,15 @@ async function openCreateCampaignModal() {
       return;
     }
     aiMsg.style.color = 'var(--success)';
-    aiMsg.textContent = `Drafted ${data.criteria} qualification criteria. Your account manager reviews it before calling starts.`;
+    aiMsg.textContent = `Drafted ${data.criteria} criteria — read them over below.`;
     aiBtn.textContent = 'Redraft with AI';
     campAiDraftsUsed += 1;
     campAiSyncLeft();
+    // v767: show the actual guide, editable, instead of just a count.
+    campGuideDraft = Array.isArray(data.fields)
+      ? data.fields.map((f) => ({ label: f.label || '', value: f.value || '' }))
+      : [];
+    campRenderGuideDraft();
   });
   // audit fix (portal_audit_chunk2.md #11, Low): the price preview used to
   // sit blank until a caller-tier radio was actually clicked, while the
@@ -6603,6 +6609,90 @@ function campNextBusinessDayLabel() {
 // questions they cannot see. submitCreateCampaign() builds its required list
 // from this same value.
 function campKindValue() { return checkedRadioValue("campKind") || "real_estate"; }
+
+// v767: the AI draft is shown to the client to read, change and confirm before
+// the campaign is submitted -- previously they only got "drafted N criteria"
+// and never saw a word of it. Held in memory so edits survive re-renders of
+// the rows without a round trip.
+let campGuideDraft = null;   // [{ label, value }]
+
+function campRenderGuideDraft() {
+  const out = document.getElementById("campAiDraftOut");
+  if (!out) return;
+  if (!campGuideDraft || !campGuideDraft.length) { out.innerHTML = ""; return; }
+  const rows = campGuideDraft.map((f, i) => `
+    <div style="display:flex; gap:8px; align-items:flex-start; padding:7px 0;
+                border-top:1px solid var(--border);">
+      <input type="text" data-gd-label="${i}" value="${escapeHtml(f.label || "")}"
+             placeholder="What to check" style="flex:1 1 170px; min-width:0; font-size:12px;">
+      <input type="text" data-gd-value="${i}" value="${escapeHtml(f.value || "")}"
+             placeholder="What qualifies" style="flex:2 1 240px; min-width:0; font-size:12px;">
+      <button type="button" data-gd-del="${i}" title="Remove"
+              style="background:none; border:none; color:var(--text-2); cursor:pointer;
+                     font-size:16px; line-height:1;">&times;</button>
+    </div>`).join("");
+  out.innerHTML = `
+    <div style="margin-top:12px; border:1px solid var(--border-light); border-radius:10px;
+                padding:12px 14px; background:var(--card);">
+      <div style="font-weight:700; font-size:12.5px; margin-bottom:2px;">Your campaign guide</div>
+      <div style="font-size:11.5px; color:var(--text-2); line-height:1.5; margin-bottom:6px;">
+        This is what your caller will qualify people against. Change anything that is not right,
+        remove what does not apply, then confirm it. Your account manager checks it before
+        anyone starts calling.
+      </div>
+      ${rows}
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px;">
+        <button type="button" class="btn-secondary" id="campGdAddBtn"
+                style="width:auto; padding:6px 12px; font-size:12px;">Add a criterion</button>
+        <button type="button" class="btn-primary" id="campGdSaveBtn"
+                style="width:auto; padding:7px 14px; font-size:12px; margin-top:0;">Confirm this guide</button>
+        <span id="campGdMsg" style="font-size:11.5px; color:var(--text-2);"></span>
+      </div>
+    </div>`;
+
+  // Keep the array in step with the boxes, so adding or removing a row never
+  // throws away something the client just typed.
+  out.querySelectorAll("[data-gd-label]").forEach((el) => {
+    el.oninput = () => { campGuideDraft[+el.dataset.gdLabel].label = el.value; };
+  });
+  out.querySelectorAll("[data-gd-value]").forEach((el) => {
+    el.oninput = () => { campGuideDraft[+el.dataset.gdValue].value = el.value; };
+  });
+  out.querySelectorAll("[data-gd-del]").forEach((el) => {
+    el.onclick = () => { campGuideDraft.splice(+el.dataset.gdDel, 1); campRenderGuideDraft(); };
+  });
+  const addBtn = document.getElementById("campGdAddBtn");
+  if (addBtn) addBtn.onclick = () => { campGuideDraft.push({ label: "", value: "" }); campRenderGuideDraft(); };
+  const saveBtn = document.getElementById("campGdSaveBtn");
+  if (saveBtn) saveBtn.onclick = () => campSaveGuideDraft(saveBtn);
+}
+
+async function campSaveGuideDraft(btn) {
+  const msg = document.getElementById("campGdMsg");
+  const name = document.getElementById("campCampaignName").value.trim();
+  const keep = (campGuideDraft || []).filter((f) => (f.label || "").trim());
+  if (!keep.length) {
+    if (msg) { msg.style.color = "var(--danger)"; msg.textContent = "Keep at least one criterion."; }
+    return;
+  }
+  btn.disabled = true;
+  if (msg) { msg.style.color = "var(--text-2)"; msg.textContent = "Saving\u2026"; }
+  const { data, error } = await sb.functions.invoke("campaign-guide-ai-draft", {
+    body: { action: "save_fields", campaignDisplayName: name, fields: keep },
+  });
+  btn.disabled = false;
+  if (error || !data || data.ok === false) {
+    if (msg) {
+      msg.style.color = "var(--danger)";
+      msg.textContent = (data && data.error) || (error && error.message) || "Could not save it.";
+    }
+    return;
+  }
+  if (msg) {
+    msg.style.color = "var(--success)";
+    msg.textContent = `Saved ${data.criteria} criteria. Continue to payment when you are ready.`;
+  }
+}
 // v764: the caller script feeds the AI draft as well as being attached to the
 // guide, so it has to reach storage BEFORE the draft is written -- not at
 // checkout like it used to. Uploaded once and remembered: drafting twice, or
