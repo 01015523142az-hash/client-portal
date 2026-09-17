@@ -6209,6 +6209,61 @@ if (new URLSearchParams(window.location.search).get("skiptrace_topup") === "succ
 // created if the webhook hasn't finished by the time this runs -- a
 // later loadData()/loadMyCampaignSubscriptions() call (next tab switch,
 // next login) will pick it up.
+// ---------------------------------------------------------------------------
+// v768: coming back from Stripe Checkout.
+//
+// Checkout is opened in a NEW TAB (openStripeCheckoutTab), and Stripe sends the
+// success/cancel URL to THAT tab. The portal then booted fresh there and showed
+// a login screen -- which is what you hit by pressing Back on Stripe. The
+// message on the original tab has always said "you'll land back here once it's
+// done", so the intent was always the opener; only the plumbing was missing.
+//
+// Rather than make the payment tab sign itself in, it hands the result to the
+// tab that started it -- still open, still signed in -- and closes. The opener
+// then reloads with the same query string, so every existing handler below runs
+// exactly as it always did, with no special case per payment type.
+const PAYMENT_RESULT_PARAMS = ["campaign_payment", "one_off_charge", "list_order_payment"];
+const PAYMENT_HANDOFF = "ptai_payment_result";
+
+(function handOffCheckoutResultToOpener() {
+  const qs = new URLSearchParams(window.location.search);
+  if (!PAYMENT_RESULT_PARAMS.some((k) => qs.get(k))) return;
+  // No opener means this IS the tab the person is working in (a blocked popup,
+  // or they navigated here themselves) -- handle it here as before.
+  let opener = null;
+  try { opener = window.opener && !window.opener.closed ? window.opener : null; } catch (e) {}
+  if (!opener) return;
+  try {
+    opener.postMessage({ type: PAYMENT_HANDOFF, search: window.location.search }, window.location.origin);
+  } catch (e) {
+    return;   // could not reach it; fall through and handle it here instead
+  }
+  // Say something first: window.close() is refused in some browsers for a tab
+  // the user has interacted with, and a silently blank tab looks broken.
+  try {
+    document.documentElement.innerHTML =
+      '<body style="margin:0;display:flex;align-items:center;justify-content:center;'
+      + 'height:100vh;font:15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;'
+      + 'background:#0f1115;color:#e8e6e3;text-align:center;padding:24px;">'
+      + '<div>Done — back in your portal tab.<br>'
+      + '<span style="color:#9aa0a6;font-size:13px;">You can close this one.</span></div></body>';
+  } catch (e) {}
+  setTimeout(() => { try { window.close(); } catch (e) {} }, 400);
+})();
+
+// The working tab picks the result up and reloads with it, which is what makes
+// the handlers below fire in a tab that is actually signed in.
+window.addEventListener("message", (ev) => {
+  if (ev.origin !== window.location.origin) return;                 // same-origin only
+  if (!ev.data || ev.data.type !== PAYMENT_HANDOFF) return;
+  const search = String(ev.data.search || "");
+  if (!search) return;
+  const qs = new URLSearchParams(search);
+  if (!PAYMENT_RESULT_PARAMS.some((k) => qs.get(k))) return;        // nothing we act on
+  try { window.focus(); } catch (e) {}
+  window.location.search = search;
+});
+
 if (new URLSearchParams(window.location.search).get("campaign_payment") === "success") {
   window.history.replaceState({}, "", window.location.pathname);
   addNotifCenterItem({
