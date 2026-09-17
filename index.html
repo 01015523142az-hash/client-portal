@@ -4558,7 +4558,8 @@ async function mkCheck(id) {
 // autoRefreshToken cannot extend it, because this counts real input, not
 // tokens. Sitting on the login form is never mistaken for a stale session.
 // ---------------------------------------------------------------------------
-const IDLE_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+// v772 (owner): one hour, was four.
+const IDLE_TIMEOUT_MS = 1 * 60 * 60 * 1000;
 const IDLE_LAST_ACTIVITY_KEY = "clientPortalLastActivityAt";
 const IDLE_SIGNOUT_MESSAGE_KEY = "clientPortalIdleSignOutMessage";
 let lastActivityRecordedAt = 0;
@@ -4596,7 +4597,7 @@ const IDLE_MS_AT_BOOT = idleMsElapsed();
 async function idleSignOut() {
   try {
     localStorage.setItem(IDLE_SIGNOUT_MESSAGE_KEY,
-      "You were signed out after 4 hours of inactivity — please sign in again.");
+      "You were signed out after 1 hour of inactivity — please sign in again.");
     localStorage.removeItem(IDLE_LAST_ACTIVITY_KEY);
   } catch (e) {}
   try { await sb.auth.signOut(); } catch (e) {}
@@ -4683,7 +4684,7 @@ async function init() {
       try { localStorage.removeItem(IDLE_LAST_ACTIVITY_KEY); } catch (e) {}
       const box = document.getElementById("loginError");
       if (box && !box.textContent) {
-        box.textContent = "You were signed out after 4 hours of inactivity — please sign in again.";
+        box.textContent = "You were signed out after 1 hour of inactivity — please sign in again.";
         box.classList.remove("hidden");
       }
       document.getElementById("loginScreen").classList.remove("hidden");
@@ -4747,7 +4748,7 @@ function isPasswordExpired(changedAt) {
 }
 
 async function afterLogin(isExplicitLogin) {
-  recordActivity();   // v748: signing in or resuming starts the 4-hour clock
+  recordActivity();   // v748: signing in or resuming starts the idle clock (1 hour since v772)
   const _topbar = document.querySelector(".app-topbar");
   if (_topbar) {
     window.addEventListener("scroll", () => {
