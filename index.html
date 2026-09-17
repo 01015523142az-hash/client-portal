@@ -2257,7 +2257,7 @@
         <div class="nav-section-label">Operations</div>
         <button class="active" data-tab="dashboard"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.5"></rect><rect x="11" y="2.5" width="6.5" height="6.5" rx="1.5"></rect><rect x="2.5" y="11" width="6.5" height="6.5" rx="1.5"></rect><rect x="11" y="11" width="6.5" height="6.5" rx="1.5"></rect></svg>Dashboard</button>
         <div class="side-nav-group" id="leadsNavGroup">
-          <button data-tab="leads"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7" cy="6.5" r="2.5"></circle><path d="M2.5 16c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5"></path><circle cx="14" cy="7.5" r="2"></circle><path d="M12.5 16c0-2 1-3.5 3-3.7"></path></svg>Seller Opportunities</button>
+          <button data-tab="leads"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7" cy="6.5" r="2.5"></circle><path d="M2.5 16c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5"></path><circle cx="14" cy="7.5" r="2"></circle><path d="M12.5 16c0-2 1-3.5 3-3.7"></path></svg>Opportunities</button>
           <div class="leads-side-subnav" id="leadsSideSubNav">
             <button class="leads-side-subtab-btn active" data-leads-subtab="my-leads">My Opportunities</button>
             <button class="leads-side-subtab-btn" data-leads-subtab="campaign-guide">Campaign Guide</button>
@@ -2461,17 +2461,17 @@
         </div>
 
         <div class="panel" id="campaignBarsPanel">
-          <div class="panel-title">Seller opportunities by campaign</div>
+          <div class="panel-title">Opportunities by campaign</div>
           <div id="campaignBars"></div>
         </div>
 
         <div class="panel" data-comment-anchor="852c442117-div">
-          <div class="panel-title">Seller opportunities in the last 14 days</div>
+          <div class="panel-title">Opportunities in the last 14 days</div>
           <div id="timeBars"></div>
         </div>
 
         <div class="panel" data-comment-anchor="ca746ad87b-div">
-          <div class="panel-title">Seller opportunities by day of week (last 90 days)</div>
+          <div class="panel-title">Opportunities by day of week (last 90 days)</div>
           <div id="weekdayBars"></div>
         </div>
 
@@ -2526,7 +2526,7 @@
            client has opened, in one place, with reply while open. ===== -->
       <div id="leadsSubtab-leads-comments" class="hidden">
         <div class="info-note" style="font-size:11.5px; line-height:1.5; margin-bottom:14px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--inset);" data-comment-anchor="ee06eae04a-div">
-          Every dispute and feedback thread you've opened on your seller opportunities. Reply while a thread is still open — our team closes it once it's resolved.
+          Every dispute and feedback thread you've opened on your opportunities. Reply while a thread is still open — our team closes it once it's resolved.
         </div>
         <div id="lcList"></div>
         <div class="empty-state hidden" id="lcEmpty">No disputes or feedback yet — use "Dispute this lead" or "Have a feedback" on an opportunity in My Opportunities.</div>
@@ -2538,7 +2538,7 @@
          card. Shares the same dispute/feedback/recording logic; just a
          focused, single-lead layout instead of the card grid. ===== -->
     <section id="tab-lead-detail" class="hidden">
-      <div class="back-link" onclick="backToLeadsFromDetail()">← Back to Seller Opportunities</div>
+      <div class="back-link" onclick="backToLeadsFromDetail()">← Back to Opportunities</div>
       <div id="leadDetailContent"></div>
     </section>
 
@@ -2547,7 +2547,7 @@
          Phone/Email are deliberately withheld until you say Yes. ===== -->
     <section id="tab-tickets" class="hidden">
       <div class="info-note" style="font-size:11.5px; line-height:1.5; margin-bottom:14px;" data-comment-anchor="e7f3e0f83c-div">
-        A ticket our team thinks may be worth your time — property/deal details only, no seller contact info yet. Say <strong>Yes</strong> and we'll get a recording attached and move it into your Seller Opportunities tab; say <strong>No</strong> and it's closed out on our end.
+        A ticket our team thinks may be worth your time — property/deal details only, no seller contact info yet. Say <strong>Yes</strong> and we'll get a recording attached and move it into your Opportunities tab; say <strong>No</strong> and it's closed out on our end.
       </div>
       <div id="ticketsGrid" class="tickets-grid"></div>
       <div class="empty-state hidden" id="ticketsEmpty">No tickets waiting on you right now.</div>
@@ -3866,9 +3866,10 @@ function mkAiDesignCardHtml() {
     <div style="margin-bottom:20px; padding:14px 16px; border-radius:10px; border:1px solid var(--border-light); background:var(--inset);">
       <div style="font-weight:700; font-size:13px; margin-bottom:3px;">Design it with AI</div>
       <div style="font-size:12px; color:var(--text-2); line-height:1.55; margin-bottom:10px;">
-        Our AI looks at your campaign, your business and your website &mdash; its colours, logo and wording &mdash;
-        and suggests three designs. Pick one, adjust anything below, then save. Prefer to design it yourself?
-        Change the settings below and ask the AI to help with any part of it.
+        Our AI looks at your campaign guide, your business and your website &mdash; its colours, logo and wording &mdash;
+        and suggests six designs, each with a marketing image drawn for your campaign. The best match comes first.
+        Pick one, adjust anything below, then save. Prefer to design it yourself? Change the settings below and
+        ask the AI to help with any part of it.
       </div>
       <label for="mkWebsiteUrl">Your website <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
       <input type="text" id="mkWebsiteUrl" maxlength="300" value="${escapeHtml(site)}" placeholder="yourcompany.com" autocapitalize="off" spellcheck="false">
@@ -3881,7 +3882,7 @@ function mkAiDesignCardHtml() {
         <input type="text" id="mkAiDesignAsk" maxlength="500" placeholder="e.g. make it feel more premium, use navy and gold, friendlier sign-off" style="flex:1 1 260px; min-width:0;">
         <button class="btn-secondary" id="mkAiAssistBtn" style="width:auto; padding:7px 14px; font-size:12px;">Ask AI</button>
       </div>
-      <div id="mkAiDesignOptions" style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;"></div>
+      <div id="mkAiDesignOptions" style="display:grid; gap:12px; margin-top:12px; grid-template-columns:repeat(auto-fit, minmax(max(220px, calc(33.333% - 12px)), 1fr));"></div>
     </div>`;
 }
 
@@ -3889,9 +3890,10 @@ function mkRenderAiDesignOptions() {
   const box = document.getElementById("mkAiDesignOptions");
   if (!box) return;
   box.innerHTML = mkAiDesignOptions.map((o, i) => `
-    <div style="flex:1 1 220px; min-width:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface, var(--bg));">
-      <div style="height:230px; overflow:hidden; pointer-events:none; border-bottom:1px solid var(--border);">
-        <div style="transform:scale(.55); transform-origin:top left; width:182%;">${mkDesignPreviewHtml(o.design)}</div>
+    <div style="min-width:0; border:1px solid ${o.best ? "var(--success)" : "var(--border)"}; border-radius:10px; overflow:hidden; background:var(--surface, var(--bg)); position:relative;">
+      ${o.best ? `<span style="position:absolute; top:8px; left:8px; z-index:1; background:var(--success); color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:999px;">Best match</span>` : ""}
+      <div style="height:360px; overflow:hidden; pointer-events:none; border-bottom:1px solid var(--border);">
+        <div style="transform:scale(.42); transform-origin:top left; width:238%;">${mkDesignPreviewHtml(o.design)}</div>
       </div>
       <div style="padding:10px 12px;">
         <div style="font-weight:700; font-size:12.5px;">${escapeHtml(o.name)}</div>
@@ -3900,10 +3902,26 @@ function mkRenderAiDesignOptions() {
       </div>
     </div>`).join("");
   box.querySelectorAll("[data-mk-ai-use]").forEach((b) => {
-    b.onclick = () => {
+    b.onclick = async () => {
       const o = mkAiDesignOptions[Number(b.dataset.mkAiUse)];
       if (!o) return;
-      mkApplyDesignToForm(o.design);
+      const design = Object.assign({}, o.design);
+      // v774: an AI image is stored full size; the one chosen is shrunk to an
+      // email-weight JPEG here and uploaded, and that copy goes in the design.
+      if (/\/ai\/hero-/.test(design.hero_image_url || "")) {
+        b.disabled = true;
+        const orig = b.textContent;
+        b.textContent = "Preparing image\u2026";
+        try {
+          const blob = await (await fetch(design.hero_image_url)).blob();
+          design.hero_image_url = await mkUploadHeroBlob(blob);
+        } catch (e) {
+          console.warn("Could not shrink the AI image; using it as is:", e);
+        }
+        b.disabled = false;
+        b.textContent = orig;
+      }
+      mkApplyDesignToForm(design);
       const msg = document.getElementById("mkDesignMsg");
       if (msg) { msg.style.color = "var(--away)"; msg.textContent = `“${o.name}” applied — review it, then Save design to keep it.`; }
       const save = document.getElementById("mkDesignSaveBtn");
@@ -3930,7 +3948,7 @@ async function mkRunDesignAi(mode) {
   const instructions = mode === "assist" ? ((document.getElementById("mkAiDesignAsk") || {}).value || "").trim() : "";
   if (mode === "assist" && !instructions) { setMsg("Tell the AI what you would like to change.", "var(--danger)"); return; }
   btns.forEach((b) => { if (b) b.disabled = true; });
-  setMsg(mode === "assist" ? "Adjusting your design…" : "Reading your campaign and website, designing… this takes a few seconds.");
+  setMsg(mode === "assist" ? "Adjusting your design\u2026" : "Reading your campaign and website, designing and drawing images\u2026 this can take up to a minute.");
   try {
     const res = await mkCall("design_ai", {
       mode, instructions,
@@ -3941,8 +3959,9 @@ async function mkRunDesignAi(mode) {
     mkAiDesignOptions = res.options || [];
     mkRenderAiDesignOptions();
     const note = res.website && res.website.note ? " " + res.website.note : "";
-    setMsg((mode === "assist" ? "Here is your adjusted design." : "Here are three designs to choose from.") + note,
-      res.website && res.website.note && !res.website.read ? "var(--away)" : "var(--success)");
+    const imgNote = res.image_note ? " " + res.image_note : "";
+    setMsg((mode === "assist" ? "Here is your adjusted design." : `Here are ${mkAiDesignOptions.length} designs, best match first.`) + note + imgNote,
+      (res.website && res.website.note && !res.website.read) || res.image_note ? "var(--away)" : "var(--success)");
   } catch (e) {
     setMsg(e.message, "var(--danger)");
   } finally {
@@ -3958,6 +3977,29 @@ function mkDesignDefaults() {
     header_text: "", greeting: "Hi {{first_name}},",
     signature: [currentClient.full_name, currentClient.company_name].filter(Boolean).join("\n"),
     footer_text: "",
+    hero_image_url: "", hero_image_alt: "",   // v774
+  };
+}
+
+// v774: storage images are shown through Supabase's resizer in previews, so
+// six option cards do not each download a full-size picture.
+function mkImgPreviewUrl(url, width) {
+  const u = String(url || "");
+  if (!u.includes("/storage/v1/object/public/")) return u;
+  return u.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") + (u.includes("?") ? "&" : "?") + `width=${width}&quality=70`;
+}
+
+// v774: previews show the client's own email when they have one, so a design
+// is judged with its real words rather than placeholder text.
+function mkPreviewMessage() {
+  const body = String((mkTemplate && mkTemplate.body) || "").trim();
+  // The design already says the greeting, so the email's own is skipped.
+  const paras = body ? body.split(/\n\s*\n/)
+    .filter((p, i) => !(i === 0 && p.length < 60 && /^(hi|hello|hey|dear|good (morning|afternoon|evening))\b/i.test(p.trim())))
+    .slice(0, 2).map((p) => p.replace(/\{\{\s*first_name(\|[^}]*)?\s*\}\}/g, "Alex")) : [];
+  return {
+    paras: paras.length ? paras : ["This is where your campaign message goes. Your team writes the message; this design wraps every email you send."],
+    button: String((mkTemplate && mkTemplate.button_text) || "").trim() || "Call to action",
   };
 }
 
@@ -3965,9 +4007,16 @@ function mkDesignDefaults() {
 function mkReadableOn(hex) {
   const m = /^#([0-9a-f]{6})$/i.exec(hex || "");
   if (!m) return "#ffffff";
-  const n = parseInt(m[1], 16);
-  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  return lum > 0.62 ? "#111111" : "#ffffff";
+  // v774: same rule as the send engine -- the higher WCAG contrast wins.
+  const lum = (h) => {
+    const n = parseInt(h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }).reduce((acc, c, i) => acc + c * [0.2126, 0.7152, 0.0722][i], 0);
+  };
+  const l = lum(m[1]);
+  return (1.05 / (l + 0.05)) >= ((l + 0.05) / (lum("111111") + 0.05)) ? "#ffffff" : "#111111";
 }
 
 function mkDesignPreviewHtml(d) {
@@ -3982,9 +4031,13 @@ function mkDesignPreviewHtml(d) {
   const lines = (v) => escapeHtml(String(v || "")).replace(/\n/g, "<br>");
   const width = Math.min(300, Math.max(60, Number(d.logo_width) || 160));
   const logo = /^https:\/\//i.test(d.logo_url || "")
-    ? `<img src="${escapeHtml(d.logo_url)}" alt="" style="max-width:${width}px; width:100%; height:auto; display:inline-block;">`
+    ? `<img src="${escapeHtml(mkImgPreviewUrl(d.logo_url, 600))}" alt="" style="max-width:${width}px; width:100%; height:auto; display:inline-block;">`
     : `<div style="font-size:20px; font-weight:700; color:${brand};">${escapeHtml((sender && sender.from_name) || currentClient.company_name || "Your company")}</div>`;
   const greeting = lines(String(d.greeting || "").replace(/\{\{\s*first_name\s*\}\}/g, "Alex"));
+  const msg = mkPreviewMessage();
+  const hero = /^https:\/\//i.test(d.hero_image_url || "")
+    ? `<img src="${escapeHtml(mkImgPreviewUrl(d.hero_image_url, 600))}" alt="${escapeHtml(d.hero_image_alt || "")}" style="display:block; width:100%; height:auto; border-radius:8px 8px 0 0;">`
+    : "";
   return `
     <div style="background:${bg}; padding:24px 12px; font-family:${font};">
       <div style="max-width:560px; margin:0 auto;">
@@ -3992,10 +4045,11 @@ function mkDesignPreviewHtml(d) {
           ${logo}
           ${d.header_text ? `<div style="font-size:13px; color:${text}; opacity:.75; margin-top:8px;">${lines(d.header_text)}</div>` : ""}
         </div>
-        <div style="background:${content}; color:${text}; border-top:4px solid ${brand}; border-radius:8px; padding:26px 24px; font-size:15px; line-height:1.6;">
+        ${hero}
+        <div style="background:${content}; color:${text}; border-top:4px solid ${brand}; border-radius:${hero ? "0 0 8px 8px" : "8px"}; padding:26px 24px; font-size:15px; line-height:1.6;">
           ${greeting ? `<p style="margin:0 0 14px;">${greeting}</p>` : ""}
-          <p style="margin:0 0 14px;">This is where your campaign message goes. Your team writes the message; this design wraps every email you send.</p>
-          <p style="margin:20px 0;"><span style="display:inline-block; background:${brand}; color:${mkReadableOn(brand)}; padding:11px 22px; border-radius:${radius}; font-weight:700; font-size:14px;">Call to action</span></p>
+          ${msg.paras.map((p) => `<p style="margin:0 0 14px;">${lines(p)}</p>`).join("")}
+          <p style="margin:20px 0;"><span style="display:inline-block; background:${brand}; color:${mkReadableOn(brand)}; padding:11px 22px; border-radius:${radius}; font-weight:700; font-size:14px;">${escapeHtml(msg.button)}</span></p>
           ${d.signature ? `<p style="margin:18px 0 0;">${lines(d.signature)}</p>` : ""}
         </div>
         <div style="text-align:center; font-size:11.5px; color:${text}; opacity:.7; padding:16px 8px 4px; line-height:1.6;">
@@ -4148,6 +4202,15 @@ function wireMarketingContent() {
             <select id="mkDz_logo_align" data-dz="logo_align">${opt("center", "Centred", d.logo_align)}${opt("left", "Left", d.logo_align)}</select>
           </div>
         </div>
+        <!-- v774: an optional wide image above the message. -->
+        <label for="mkHeroFile" style="margin-top:12px;">Marketing image <span style="color:var(--text-2); font-weight:400;">(optional)</span></label>
+        <input type="file" id="mkHeroFile" accept="image/png,image/jpeg,image/webp">
+        <div id="mkHeroMsg" style="font-size:11.5px; color:var(--text-2); margin-top:4px;">A wide photo shown above your message. We shrink it for email automatically.</div>
+        <input type="text" id="mkDz_hero_image_url" data-dz="hero_image_url" value="${escapeHtml(d.hero_image_url || "")}" placeholder="or an image address: https://..." autocapitalize="off" spellcheck="false" style="margin-top:6px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; align-items:center;">
+          <input type="text" id="mkDz_hero_image_alt" data-dz="hero_image_alt" maxlength="150" value="${escapeHtml(d.hero_image_alt || "")}" placeholder="Describe the image (shown if images are off)" style="flex:1 1 220px; min-width:0;">
+          <button type="button" class="btn-ghost" id="mkHeroRemoveBtn" style="width:auto; padding:6px 12px; font-size:12px; border:1px solid var(--border-light); border-radius:10px;">Remove image</button>
+        </div>
         <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
           ${colorField("brand_color", "Brand colour")}
           ${colorField("background_color", "Page background")}
@@ -4250,8 +4313,51 @@ function wireMarketingContent() {
     const f = e.target.files && e.target.files[0];
     if (f) mkUploadLogo(f);
   });
+  // v774: marketing image
+  document.getElementById("mkHeroFile").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const msg = document.getElementById("mkHeroMsg");
+    const setMsg = (tx, c) => { if (msg) { msg.style.color = c || "var(--text-2)"; msg.textContent = tx; } };
+    setMsg("Preparing the image\u2026");
+    try {
+      const url = await mkUploadHeroBlob(f);
+      mkApplyDesignToForm({ hero_image_url: url, hero_image_alt: mkDesignDraft.hero_image_alt || "" });
+      setMsg("Added. Save the design to keep it.", "var(--success)");
+    } catch (err) { setMsg(err.message, "var(--danger)"); }
+  });
+  document.getElementById("mkHeroRemoveBtn").onclick = () => mkApplyDesignToForm({ hero_image_url: "", hero_image_alt: "" });
   document.getElementById("mkDesignSaveBtn").addEventListener("click", mkSaveDesign);
   mkRenderDesignPreview();
+}
+
+// v774: any picture -> at most 1200 px wide JPEG (quality .82, ~100-250 KB) ->
+// marketing-assets via logo_upload { purpose: 'hero' }. Returns its URL.
+async function mkUploadHeroBlob(blob) {
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(blob.type || "")) throw new Error("Use a PNG, JPG or WebP image.");
+  const bmp = await createImageBitmap(blob);
+  const scale = Math.min(1, 1200 / bmp.width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  let q = 0.82, jpeg = null;
+  do {
+    jpeg = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", q));
+    q -= 0.12;
+  } while (jpeg && jpeg.size > 900 * 1024 && q > 0.4);
+  if (!jpeg) throw new Error("That image could not be prepared.");
+  const b64 = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = () => reject(new Error("That image could not be read."));
+    r.readAsDataURL(jpeg);
+  });
+  const res = await mkCall("logo_upload", { content_type: "image/jpeg", data_base64: b64, purpose: "hero" });
+  return res.url;
 }
 
 async function mkUploadLogo(file) {
@@ -6414,7 +6520,7 @@ function handleCheckoutReturn(search) {
     addNotifCenterItem({
       icon: "\u{1F4E3}",
       title: "Payment received",
-      body: `Your campaign subscription is being set up — it'll appear on your Dashboard and under Seller Opportunities → Campaign Guide shortly, and under Billing once the subscription is active. Your caller will start ${campNextBusinessDayLabel()}; we've extended your first billing cycle by that same gap.`,
+      body: `Your campaign subscription is being set up — it'll appear on your Dashboard and under Opportunities → Campaign Guide shortly, and under Billing once the subscription is active. Your caller will start ${campNextBusinessDayLabel()}; we've extended your first billing cycle by that same gap.`,
       onClick: () => { loadData(); refreshSubs(); refreshAccountTypeAfterUpgrade(); },
     });
     if (currentClient) { loadData(); refreshAccountTypeAfterUpgrade(); refreshSubs(); }
@@ -6536,7 +6642,7 @@ async function openCreateCampaignModal(arg) {
   const box = document.getElementById("campaignModalBox");
   box.innerHTML = `
     <div class="modal-title">Create a new campaign</div>
-    <div class="modal-sub">Tell us about the leads you're looking for — our team will review this and get your campaign set up. You'll be able to see it under Seller Opportunities → Campaign Guide right away.</div>
+    <div class="modal-sub">Tell us about the leads you're looking for — our team will review this and get your campaign set up. You'll be able to see it under Opportunities → Campaign Guide right away.</div>
 
     <label>Campaign Name *</label>
     <input type="text" id="campCampaignName" placeholder="e.g. Downtown Distressed Sellers">
@@ -7195,7 +7301,7 @@ async function submitCreateCampaign() {
     if (data.billingWarning) {
       alert(`Campaign created and added to your existing subscription, but the billing charge failed: ${data.billingWarning}\n\nWe've added it as a pending charge you can pay from Billing → Pending payment.`);
     } else {
-      alert("Campaign created and added to your existing subscription — it'll appear on your Dashboard and under Seller Opportunities → Campaign Guide shortly.");
+      alert("Campaign created and added to your existing subscription — it'll appear on your Dashboard and under Opportunities → Campaign Guide shortly.");
     }
     loadData();
     if (typeof loadMyCampaignSubscriptions === "function") loadMyCampaignSubscriptions();
@@ -8433,7 +8539,7 @@ const CLIENT_TOUR_STEPS = [
   { tab: "dashboard", target: "#campaignBarsPanel", title: "Campaign breakdown", body: "See exactly which campaigns are producing for you at a glance, so you always know what you're getting for what you're paying." },
   { tab: "dashboard", target: "#recentLeadsList", title: "Freshness, visible", body: "The most recent leads delivered to you \u2014 a quick reassurance that delivery is active and current." },
   { target: "#openCreateCampaignBtn", title: "Start a new campaign", body: "Ready to get leads flowing in? Click \u201c+ Create Campaign\u201d right here \u2014 it's always in the header, on any tab. You'll choose a caller tier (part-time or full-time), pick our dialer/data or your own, and answer a short qualification questionnaire \u2014 property type, target market, and what makes a lead worth calling you about \u2014 with the price updating live as you go. Submit it and you'll go straight to checkout; your campaign shows up under Campaign Guide the moment payment goes through." },
-  { tab: "leads", subtab: "my-leads", target: "#leadsSideSubNav", title: "The Seller Opportunities tab", body: "Every seller opportunity delivered to you lives here, searchable and filterable by campaign, status, and date." },
+  { tab: "leads", subtab: "my-leads", target: "#leadsSideSubNav", title: "The Opportunities tab", body: "Every opportunity delivered to you lives here, searchable and filterable by campaign, status, and date." },
   { tab: "leads", subtab: "my-leads", target: "#leadsGrid", title: "Built-in accountability", body: "Each lead shows New or Accepted at a glance, and you can filter by status or a date range above. Click \u201cView details\u201d on any lead for the full picture \u2014 every field submitted, plus the call recording when there is one. Spot something off? Dispute it within 2 business days, or leave open-ended feedback any time \u2014 both go straight to our team, no email back-and-forth." },
   { tab: "leads", subtab: "campaign-guide", target: "#leadsSubtab-campaign-guide", title: "Campaign Guide", body: "The exact qualification checklist our callers work from for your campaigns \u2014 full transparency on what counts as a qualified lead." },
   { tab: "leads", subtab: "leads-comments", target: "#leadsSubtab-leads-comments", title: "Opportunity Comments", body: "Every dispute and feedback thread you've opened lives here permanently, so nothing gets lost." },
@@ -9124,7 +9230,7 @@ async function loadTickets(){
         addNotifCenterItem({
           icon: "\u{1F3AB}",
           title: "New ticket available for review",
-          body: "Say Yes or No to move it into your Seller Opportunities tab.",
+          body: "Say Yes or No to move it into your Opportunities tab.",
           onClick: () => navigateToClientTab("tickets"),
         });
       });
