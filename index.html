@@ -13523,6 +13523,7 @@ async function handleClientCallSignal(msg) {
     document.getElementById("incomingCallBanner").classList.add("show");
     clientCallStartRingtone("incoming");
     clientCallAlertStart(callState.peerName);   // v697
+    clientCallWatchRinging(callState);   // v791
     return;
   }
   // v707: may arrive with no callState at all -- this tab was just reloaded.
@@ -13681,14 +13682,66 @@ function toggleClientCallMute() {
 // time, not when the offer first arrives, so the browser's permission
 // prompt never appears before the client has actually chosen to answer
 // (same sequencing as dashboard.html's own acceptIncomingCall).
+// v791: the client may have the app and this portal open at once, and staff
+// calls ring on both. Only ONE device takes the call: answering first claims
+// the call row (only while it is still "ringing"), every other device sees it
+// is no longer ringing and stops. This also stops ringing here when staff
+// give up and their hang-up message was missed.
+function clientCallStopRingingHere(note) {
+  clientCallStopRingtone();
+  clientCallAlertStop();
+  document.getElementById("incomingCallBanner").classList.remove("show");
+  if (callState && callState.role === "callee" && !callState.pc) {
+    clearInterval(callState.rowWatch);
+    callState = null;
+  }
+  if (note && typeof showToast === "function") showToast(note);
+}
+function clientCallWatchRinging(state) {
+  if (!state || !state.callRowId) return;
+  clearInterval(state.rowWatch);
+  state.rowWatch = setInterval(async () => {
+    if (callState !== state || state.status !== "ringing" || state.pc) { clearInterval(state.rowWatch); return; }
+    const { data } = await sb.from("voice_calls").select("status").eq("id", state.callRowId).maybeSingle();
+    if (callState !== state || state.status !== "ringing" || state.pc || !data) return;
+    if (data.status !== "ringing") clientCallStopRingingHere(data.status === "answered" ? "Answered on another device" : null);
+  }, 2500);
+}
+async function clientCallClaim(rowId, status) {
+  // true = this device got it; false = another device already answered/declined
+  const patch = status === "answered" ? { status, answered_at: new Date().toISOString() } : { status, ended_at: new Date().toISOString() };
+  const { data, error } = await sb.from("voice_calls").update(patch).eq("id", rowId).eq("status", "ringing").select("id");
+  if (error) { console.warn("call claim failed", error); return true; }   // don't strand a real answer on a network blip
+  return Array.isArray(data) && data.length > 0;
+}
+
 async function acceptClientIncomingCall() {
   if (!callState || callState.pc) return; // pc already set means this isn't a still-ringing inbound offer
+  // v791: first device to answer wins.
+  if (callState.callRowId) {
+    const rowId = callState.callRowId;
+    const won = await clientCallClaim(rowId, "answered");
+    if (!won) { clientCallStopRingingHere("Answered on another device"); return; }
+    callState.claimed = true;
+  }
   clientCallStopRingtone();
   clientCallAlertStop();   // v697
   document.getElementById("incomingCallBanner").classList.remove("show");
   let localStream;
   try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch (e) { alert("Microphone access was blocked or unavailable — allow microphone access to answer."); declineClientIncomingCall(); return; }
+  catch (e) {
+    alert("Microphone access was blocked or unavailable — allow microphone access to answer.");
+    // v791: this device already claimed the call -- release it as declined.
+    if (callState && callState.claimed && callState.callRowId) {
+      const st = callState;
+      callState = null;
+      sb.from("voice_calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", st.callRowId).then(() => {});
+      clientCallSendOneOff(st.peerId, { type: "decline" });
+      return;
+    }
+    declineClientIncomingCall();
+    return;
+  }
 
   const outboundChannel = sb.channel("call-signal-" + callState.peerId);
   await callChannelReady(outboundChannel);
@@ -13714,7 +13767,7 @@ async function acceptClientIncomingCall() {
   await pc.setLocalDescription(answer);
   callState.status = "answered";
   callSend(outboundChannel, { type: "answer", sdp: answer });
-  if (callState.callRowId) sb.from("voice_calls").update({ status: "answered", answered_at: new Date().toISOString() }).eq("id", callState.callRowId).then(() => {});
+  if (callState.callRowId && !callState.claimed) sb.from("voice_calls").update({ status: "answered", answered_at: new Date().toISOString() }).eq("id", callState.callRowId).then(() => {});
 
   clientCallPlayConnectSound();   // v699: as on the staff side
   showCallBar(callState.peerName, "Connected", true);
@@ -13727,9 +13780,15 @@ function declineClientIncomingCall() {
   clientCallStopRingtone();
   clientCallAlertStop();   // v697
   document.getElementById("incomingCallBanner").classList.remove("show");
-  clientCallSendOneOff(callState.peerId, { type: "decline" });
-  if (callState.callRowId) sb.from("voice_calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", callState.callRowId).then(() => {});
+  const state = callState;
+  clearInterval(state.rowWatch);
   callState = null;
+  // v791: decline only a call still ringing -- if the client's other device
+  // already answered, just stop ringing here (a decline would end that call).
+  if (!state.callRowId) { clientCallSendOneOff(state.peerId, { type: "decline" }); return; }
+  clientCallClaim(state.callRowId, "declined").then((won) => {
+    if (won) clientCallSendOneOff(state.peerId, { type: "decline" });
+  });
 }
 
 function endClientVoiceCall(finalStatus, notifyPeer) {
