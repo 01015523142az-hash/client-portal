@@ -13467,6 +13467,18 @@ async function startClientVoiceCall() {
       if (callState !== ringing || ringing.status !== "ringing") { clearInterval(ringing.offerRetry); return; }
       callSend(outboundChannel, { type: "offer-retry", sdp: offer, callRowId: ringing.callRowId });
     }, 4000);
+    // v790: staff declining (or giving up) is a one-off message that can be
+    // missed -- the portal kept "Calling..." until the 45 s timeout. The call
+    // row is the backup: stop once it is no longer ringing.
+    ringing.rowWatch = setInterval(async () => {
+      if (callState !== ringing || ringing.status !== "ringing") { clearInterval(ringing.rowWatch); return; }
+      const { data } = await sb.from("voice_calls").select("status").eq("id", ringing.callRowId).maybeSingle();
+      if (callState !== ringing || ringing.status !== "ringing" || !data) return;
+      if (data.status === "declined" || data.status === "missed" || data.status === "ended" || data.status === "failed") {
+        clearInterval(ringing.rowWatch);
+        endClientVoiceCall(null, false);
+      }
+    }, 3000);
   }
 
   callState.ringStartedAt = Date.now();
@@ -13725,6 +13737,7 @@ function endClientVoiceCall(finalStatus, notifyPeer) {
   const state = callState;
   clearTimeout(state.ringTimeout);
   clearInterval(state.offerRetry);   // v700
+  clearInterval(state.rowWatch);   // v790
   clearInterval(state.saveTimer);   // v707
   clientCallClearReconnect(state);
   clientCallClearSaved();
