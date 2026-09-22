@@ -3507,6 +3507,60 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /* v802: hand the app's own client to the crash reporter, which has been
    buffering since before this script ran. */
 try { if (window.__opsAttach) window.__opsAttach(sb); } catch (e) {}
+// v830 (owner asked 2026-09-22): would the database be faster in the US? Once a
+// day, in the background, a signed-in browser times a few round trips -- to
+// our project today (Frankfurt), to AWS eu-central-1 (the region it runs in,
+// as a baseline) and to AWS us-east-1 / us-east-2 -- and stores the medians in
+// latency_probes. Ops Health shows the result per place. Waits 45 s after the
+// page loads, only runs while the tab is visible, gives up for the day after
+// three failed saves, and never affects the page.
+(function () {
+  var PORTAL = 'client';
+  var KEY = 'pt.latencyProbe.' + PORTAL;
+  var done = false, tries = 0;
+  function median(a) {
+    var b = a.filter(function (x) { return x != null; }).sort(function (x, y) { return x - y; });
+    return b.length ? Math.round(b[Math.floor(b.length / 2)]) : null;
+  }
+  async function time(url, opts) {
+    var t = performance.now();
+    try { await fetch(url, opts); } catch (e) { return null; }
+    return performance.now() - t;
+  }
+  async function probe(url, opts) {
+    await time(url, opts);   // warm-up: DNS and TLS are not what we are measuring
+    var r = [];
+    for (var i = 0; i < 5; i++) r.push(await time(url + (url.indexOf('?') < 0 ? '?' : '&') + 'r=' + Math.random(), opts));
+    return median(r);
+  }
+  async function run() {
+    try {
+      if (done || document.hidden || typeof sb === 'undefined' || !sb || tries >= 3) return;
+      var today = new Date().toISOString().slice(0, 10);
+      try { if (localStorage.getItem(KEY) === today) { done = true; return; } } catch (e) {}
+      var s = await sb.auth.getSession();
+      if (!s || !s.data || !s.data.session) return;
+      done = true;
+      tries++;
+      var aws = function (region) {
+        return probe('https://dynamodb.' + region + '.amazonaws.com/ping', { mode: 'no-cors', cache: 'no-store' });
+      };
+      var row = {
+        portal: PORTAL,
+        tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || null),
+        supabase_ms: await probe(SUPABASE_URL + '/auth/v1/health', { cache: 'no-store', headers: { apikey: SUPABASE_ANON_KEY } }),
+        eu_ms: await aws('eu-central-1'),
+        use1_ms: await aws('us-east-1'),
+        use2_ms: await aws('us-east-2')
+      };
+      var res = await sb.from('latency_probes').insert(row);
+      if (res && !res.error) { try { localStorage.setItem(KEY, today); } catch (e) {} }
+      else done = false;
+    } catch (e) { done = false; }
+  }
+  setTimeout(run, 45000);
+  setInterval(run, 10 * 60 * 1000);
+})();
 
 
 let currentClient = null;
